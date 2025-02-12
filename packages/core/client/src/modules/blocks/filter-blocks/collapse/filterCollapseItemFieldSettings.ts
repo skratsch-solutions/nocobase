@@ -13,9 +13,10 @@ import { useTranslation } from 'react-i18next';
 import { SchemaSettings } from '../../../../application/schema-settings/SchemaSettings';
 import { useFormBlockContext } from '../../../../block-provider/FormBlockProvider';
 import { useCollectionManager_deprecated, useCollection_deprecated } from '../../../../collection-manager';
+import { useCollection } from '../../../../data-source';
 import { useCollectionManager } from '../../../../data-source/collection/CollectionManagerProvider';
 import { useCompile, useDesignable } from '../../../../schema-component';
-import { SchemaSettingsDefaultSortingRules } from '../../../../schema-settings';
+import { SchemaSettingsDefaultSortingRules, SchemaSettingsDefaultValue } from '../../../../schema-settings';
 import { SchemaSettingsDataScope } from '../../../../schema-settings/SchemaSettingsDataScope';
 
 export const filterCollapseItemFieldSettings = new SchemaSettings({
@@ -134,6 +135,12 @@ export const filterCollapseItemFieldSettings = new SchemaSettings({
                 },
               };
             },
+            useVisible() {
+              const fieldSchema = useFieldSchema();
+              const collection = useCollection();
+              const collectionField = collection.getField(fieldSchema['name']);
+              return !!collectionField?.target;
+            },
           },
           {
             name: 'setDefaultSortingRules',
@@ -148,6 +155,12 @@ export const filterCollapseItemFieldSettings = new SchemaSettings({
               return {
                 name: collectionField?.target,
               };
+            },
+            useVisible() {
+              const fieldSchema = useFieldSchema();
+              const collection = useCollection();
+              const collectionField = collection.getField(fieldSchema['name']);
+              return !!collectionField?.target;
             },
           },
           {
@@ -196,7 +209,20 @@ export const filterCollapseItemFieldSettings = new SchemaSettings({
                 onChange: onTitleFieldChange,
               };
             },
+            useVisible() {
+              const fieldSchema = useFieldSchema();
+              const collection = useCollection();
+              const collectionField = collection.getField(fieldSchema['name']);
+              return !!collectionField?.target;
+            },
           },
+          {
+            name: 'setDefaultValue',
+            Component: SchemaSettingsDefaultValue,
+            componentProps: {
+              hideVariableButton: true,
+            },
+          } as any,
         ];
       },
     },

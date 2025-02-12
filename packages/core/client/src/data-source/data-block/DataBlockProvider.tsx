@@ -121,6 +121,27 @@ export interface DataBlockContextValue<T extends {} = {}> {
 export const DataBlockContext = createContext<DataBlockContextValue<any>>({} as any);
 DataBlockContext.displayName = 'DataBlockContext';
 
+const DataBlockResourceContext = createContext<{ rerenderDataBlock: () => void }>(null);
+export const RerenderDataBlockProvider: FC = ({ children }) => {
+  const [hidden, setHidden] = React.useState(false);
+  const value = useMemo(() => {
+    return {
+      rerenderDataBlock: () => {
+        setHidden(true);
+        setTimeout(() => {
+          setHidden(false);
+        });
+      },
+    };
+  }, []);
+
+  if (hidden) {
+    return null;
+  }
+
+  return <DataBlockResourceContext.Provider value={value}>{children}</DataBlockResourceContext.Provider>;
+};
+
 /**
  * @internal
  */
@@ -152,7 +173,7 @@ export const AssociationOrCollectionProvider = (props: {
 };
 
 export const DataBlockProvider: FC<Partial<AllDataBlockProps>> = withDynamicSchemaProps(
-  (props) => {
+  React.memo((props) => {
     const { collection, association, dataSource, children, hidden, ...resets } = props as Partial<AllDataBlockProps>;
     const { dn } = useDesignable();
     if (hidden) {
@@ -170,7 +191,9 @@ export const DataBlockProvider: FC<Partial<AllDataBlockProps>> = withDynamicSche
             <ACLCollectionProvider>
               <DataBlockResourceProvider>
                 <BlockRequestProvider>
-                  <DataBlockCollector params={props.params}>{children}</DataBlockCollector>
+                  <DataBlockCollector params={props.params}>
+                    <RerenderDataBlockProvider>{children}</RerenderDataBlockProvider>
+                  </DataBlockCollector>
                 </BlockRequestProvider>
               </DataBlockResourceProvider>
             </ACLCollectionProvider>
@@ -178,7 +201,7 @@ export const DataBlockProvider: FC<Partial<AllDataBlockProps>> = withDynamicSche
         </CollectionManagerProvider>
       </DataBlockContext.Provider>
     );
-  },
+  }),
   { displayName: 'DataBlockProvider' },
 );
 
@@ -194,4 +217,12 @@ export const useDataBlock = <T extends {}>() => {
 export const useDataBlockProps = <T extends {}>(): DataBlockContextValue<T>['props'] => {
   const context = useDataBlock<T>();
   return context.props;
+};
+
+export const useRerenderDataBlock = () => {
+  const context = useContext(DataBlockResourceContext);
+  if (!context) {
+    throw new Error('useRerenderDataBlock() must be used within a DataBlockProvider');
+  }
+  return context;
 };

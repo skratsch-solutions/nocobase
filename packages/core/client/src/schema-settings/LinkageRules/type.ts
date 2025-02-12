@@ -19,4 +19,17 @@ export enum ActionType {
   Disabled = 'disabled',
   Value = 'value',
   Active = 'enabled',
+  Color = 'color',
+  BackgroundColor = 'backgroundColor',
+  TextAlign = 'textAlign',
 }
+
+export enum LinkageRuleCategory {
+  default = 'default',
+  style = 'style',
+}
+
+export const LinkageRuleDataKeyMap: Record<`${LinkageRuleCategory}`, string> = {
+  [LinkageRuleCategory.style]: 'x-linkage-style-rules',
+  [LinkageRuleCategory.default]: 'x-linkage-rules',
+};

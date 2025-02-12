@@ -9,9 +9,10 @@
 
 import { PageHeader as AntdPageHeader } from '@ant-design/pro-layout';
 import { Input, Spin } from 'antd';
-import React, { useContext, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import React, { useContext, useMemo, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { useAPIClient, useRequest, useSchemaTemplateManager } from '..';
+import { useNavigateNoUpdate } from '../application/CustomRouterContextProvider';
 import { RemoteSchemaComponent, SchemaComponentContext } from '../schema-component';
 
 const EditableTitle = (props) => {
@@ -68,10 +69,12 @@ const EditableTitle = (props) => {
 };
 
 export const BlockTemplateDetails = () => {
-  const navigate = useNavigate();
+  const navigate = useNavigateNoUpdate();
   const params = useParams<any>();
   const key = params?.key;
   const value = useContext(SchemaComponentContext);
+  const schemaComponentContext = useMemo(() => ({ ...value, designable: true }), [value]);
+
   const { data, loading } = useRequest<{
     data: any;
   }>({
@@ -81,9 +84,11 @@ export const BlockTemplateDetails = () => {
       filterByTk: key,
     },
   });
+
   if (loading) {
     return <Spin />;
   }
+
   return (
     <div>
       <AntdPageHeader
@@ -95,7 +100,7 @@ export const BlockTemplateDetails = () => {
         title={<EditableTitle filterByTk={key} title={data?.data?.name} />}
       />
       <div style={{ margin: 'var(--nb-spacing)' }}>
-        <SchemaComponentContext.Provider value={{ ...value, designable: true }}>
+        <SchemaComponentContext.Provider value={schemaComponentContext}>
           <RemoteSchemaComponent uid={data?.data?.uid} />
         </SchemaComponentContext.Provider>
       </div>

@@ -7,10 +7,9 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
-import React, { createContext, useContext, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import React, { createContext, useCallback, useContext, useMemo } from 'react';
 import { useAPIClient, useRequest } from '../api-client';
-import { useAppSpin } from '../application/hooks/useAppSpin';
+import { useIsAdminPage } from '../application/CustomRouterContextProvider';
 
 export interface CollectionHistoryContextValue {
   historyCollections: any[];
@@ -23,29 +22,23 @@ const CollectionHistoryContext = createContext<CollectionHistoryContextValue>({
 });
 CollectionHistoryContext.displayName = 'CollectionHistoryContext';
 
+const options = {
+  resource: 'collectionsHistory',
+  action: 'list',
+  params: {
+    paginate: false,
+    appends: ['fields'],
+    filter: {
+      // inherit: false,
+    },
+    sort: ['sort'],
+  },
+};
+
 export const CollectionHistoryProvider: React.FC = (props) => {
   const api = useAPIClient();
-
-  const options = {
-    resource: 'collectionsHistory',
-    action: 'list',
-    params: {
-      paginate: false,
-      appends: ['fields'],
-      filter: {
-        // inherit: false,
-      },
-      sort: ['sort'],
-    },
-  };
-
-  const location = useLocation();
-
-  // console.log('location', location);
-
-  const isAdminPage = location.pathname.startsWith('/admin');
+  const isAdminPage = useIsAdminPage();
   const token = api.auth.getToken() || '';
-  const { render } = useAppSpin();
 
   const service = useRequest<{
     data: any;
@@ -55,31 +48,25 @@ export const CollectionHistoryProvider: React.FC = (props) => {
   });
 
   // 刷新 collecionHistory
-  const refreshCH = async () => {
+  const refreshCH = useCallback(async () => {
     const { data } = await api.request(options);
     service.mutate(data);
     return data?.data || [];
-  };
+  }, [service]);
 
-  if (service.loading) {
-    return render();
-  }
+  const value = useMemo(() => {
+    return {
+      historyCollections: service.data?.data,
+      refreshCH,
+    };
+  }, [refreshCH, service.data?.data]);
 
-  return (
-    <CollectionHistoryContext.Provider
-      value={{
-        historyCollections: service.data?.data,
-        refreshCH,
-      }}
-    >
-      {props.children}
-    </CollectionHistoryContext.Provider>
-  );
+  return <CollectionHistoryContext.Provider value={value}>{props.children}</CollectionHistoryContext.Provider>;
 };
 
 export const useHistoryCollectionsByNames = (collectionNames: string[]) => {
   const { historyCollections } = useContext(CollectionHistoryContext);
-  return historyCollections.filter((i) => collectionNames.includes(i.name));
+  return historyCollections?.filter((i) => collectionNames.includes(i.name)) || [];
 };
 
 export const useCollectionHistory = () => {

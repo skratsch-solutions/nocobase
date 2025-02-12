@@ -18,10 +18,10 @@ test.describe('where filter block can be added', () => {
 
     // 1. 页面中创建一个 filter form，一个 filter collapse
     await page.getByLabel('schema-initializer-Grid-page:').hover();
-    await page.getByRole('menuitem', { name: 'form Form right' }).nth(1).hover();
+    await page.getByRole('menuitem', { name: 'Form right' }).nth(1).hover();
     await page.getByRole('menuitem', { name: 'Users' }).click();
     await page.getByLabel('schema-initializer-Grid-page:').hover();
-    await page.getByRole('menuitem', { name: 'table Collapse right' }).hover();
+    await page.getByRole('menuitem', { name: 'Collapse right' }).hover();
     await page.getByRole('menuitem', { name: 'Users' }).click();
 
     // 2. 区块中能正常创建字段和按钮，且能正常显示字段值
@@ -64,7 +64,7 @@ test.describe('where filter block can be added', () => {
 
     // filter
     await page.getByLabel('action-Action-Filter-submit-').click({ position: { x: 10, y: 10 } });
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
     for (const record of newUserRecords) {
       await expect(page.getByLabel('block-item-CardItem-users-table').getByText(record.nickname)).toBeVisible({
         visible: record === newUserRecords[0],
@@ -82,7 +82,7 @@ test.describe('where filter block can be added', () => {
 
     // reset
     await page.getByLabel('action-Action-Reset-users-').click({ position: { x: 10, y: 10 } });
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
     for (const record of newUserRecords) {
       await expect(page.getByLabel('block-item-CardItem-users-table').getByText(record.nickname)).toBeVisible();
       await expect(page.getByLabel('block-item-CardItem-users-list').getByText(record.nickname)).toBeVisible();
@@ -97,8 +97,9 @@ test.describe('where filter block can be added', () => {
 
     // 1. 测试用表单筛选关系区块
     await page.getByLabel('action-Action.Link-View record-view-users-table-1').click();
+    await page.waitForTimeout(1000);
     await page.getByLabel('schema-initializer-Grid-popup').hover();
-    await page.getByRole('menuitem', { name: 'form Form right' }).hover();
+    await page.getByRole('menuitem', { name: 'Form right' }).hover();
     await page.getByRole('menuitem', { name: 'Roles' }).click();
     await page.getByLabel('schema-initializer-Grid-filterForm:configureFields-roles').hover();
     await page.getByRole('menuitem', { name: 'Role UID' }).click();
@@ -123,7 +124,7 @@ test.describe('where filter block can be added', () => {
       .getByRole('textbox')
       .fill(usersRecords[0].roles[0].name);
     await page.getByLabel('action-Action-Filter-submit-').click({ position: { x: 10, y: 10 } });
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
 
     for (const record of usersRecords[0].roles) {
       await expect(page.getByLabel('block-item-CardItem-roles-details').getByText(record.name)).toBeVisible({
@@ -141,7 +142,7 @@ test.describe('where filter block can be added', () => {
     }
 
     await page.getByLabel('action-Action-Reset-roles-').click({ position: { x: 10, y: 10 } });
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
     for (const record of usersRecords[0].roles) {
       await expect(page.getByLabel('block-item-CardItem-roles-table').getByText(record.name)).toBeVisible();
       await expect(page.getByLabel('block-item-CardItem-roles-list').getByText(record.name)).toBeVisible();
@@ -150,7 +151,7 @@ test.describe('where filter block can be added', () => {
 
     // 2. 测试用表单筛选其它区块
     await page.getByLabel('schema-initializer-Grid-popup').hover();
-    await page.getByRole('menuitem', { name: 'form Form right' }).hover();
+    await page.getByRole('menuitem', { name: 'Form right' }).hover();
     await page.getByRole('menuitem', { name: 'Users' }).click();
     await page.getByLabel('schema-initializer-Grid-filterForm:configureFields-users').hover();
     await page.getByRole('menuitem', { name: 'Nickname' }).click();
@@ -171,8 +172,8 @@ test.describe('where filter block can be added', () => {
     await connectToOtherBlock('Users #o1nq');
 
     await page.getByLabel('block-item-CardItem-users-filter-form').getByRole('textbox').fill(usersRecords[0].nickname);
-    await page.getByLabel('action-Action-Filter-submit-users-filter-form-').click({ position: { x: 10, y: 10 } });
-    await page.waitForLoadState('networkidle');
+    await page.getByLabel('action-Action-Filter-submit-users-filter-form').click({ position: { x: 10, y: 10 } });
+    await page.waitForLoadState('load');
     for (const record of usersRecords) {
       await expect(page.getByLabel('block-item-CardItem-users-details').getByText(record.nickname)).toBeVisible({
         visible: record === usersRecords[0],
@@ -194,7 +195,7 @@ test.describe('where filter block can be added', () => {
     }
 
     await page.getByLabel('action-Action-Reset-users-').click({ position: { x: 10, y: 10 } });
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
     for (const record of usersRecords) {
       await expect(
         page

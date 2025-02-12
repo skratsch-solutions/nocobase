@@ -7,7 +7,7 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
-import { FormOutlined } from '@ant-design/icons';
+import { CalendarOutlined } from '@ant-design/icons';
 import { FormLayout } from '@formily/antd-v5';
 import { SchemaOptionsContext } from '@formily/react';
 import {
@@ -45,8 +45,8 @@ export const CalendarBlockInitializer = ({
   return (
     <DataBlockInitializer
       {...itemConfig}
-      componentType={'Calendar'}
-      icon={<FormOutlined />}
+      componentType={`Calendar`}
+      icon={<CalendarOutlined />}
       onCreateBlockSchema={async (options) => {
         if (createBlockSchema) {
           return createBlockSchema(options);
@@ -70,10 +70,14 @@ export const useCreateCalendarBlock = () => {
 
   const createCalendarBlock = async ({ item }) => {
     const stringFieldsOptions = getCollectionFieldsOptions(item.name, 'string', { dataSource: item.dataSource });
-    const dateFieldsOptions = getCollectionFieldsOptions(item.name, 'date', {
-      association: ['o2o', 'obo', 'oho', 'm2o'],
-      dataSource: item.dataSource,
-    });
+    const dateFieldsOptions = getCollectionFieldsOptions(
+      item.name,
+      ['date', 'datetime', 'dateOnly', 'datetimeNoTz', 'unixTimestamp'],
+      {
+        association: ['o2o', 'obo', 'oho', 'm2o'],
+        dataSource: item.dataSource,
+      },
+    );
 
     const values = await FormDialog(
       t('Create calendar block'),

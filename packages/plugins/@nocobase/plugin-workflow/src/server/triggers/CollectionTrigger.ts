@@ -7,12 +7,16 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
-import { Model, Transactionable } from '@nocobase/database';
+import { pick } from 'lodash';
+import { isValidFilter } from '@nocobase/utils';
+import { Collection, Model, Transactionable } from '@nocobase/database';
+import { ICollection, parseCollectionName, SequelizeCollectionManager } from '@nocobase/data-source-manager';
+
 import Trigger from '.';
 import { toJSON } from '../utils';
 import type { WorkflowModel } from '../types';
-import { ICollection, parseCollectionName } from '@nocobase/data-source-manager';
-import { isValidFilter } from '@nocobase/utils';
+import type { EventOptions } from '../Plugin';
+import { Context } from '@nocobase/actions';
 
 export interface CollectionChangeTriggerConfig {
   collection: string;
@@ -44,81 +48,105 @@ function getFieldRawName(collection: ICollection, name: string) {
   return name;
 }
 
-// async function, should return promise
-async function handler(this: CollectionTrigger, workflow: WorkflowModel, data: Model, options) {
-  const { condition, changed, mode, appends } = workflow.config;
-  const [dataSourceName, collectionName] = parseCollectionName(workflow.config.collection);
-  const collection = this.workflow.app.dataSourceManager?.dataSources
-    .get(dataSourceName)
-    .collectionManager.getCollection(collectionName);
-  const { transaction, context } = options;
-  const { repository, filterTargetKey } = collection;
+export default class CollectionTrigger extends Trigger {
+  events = new Map();
 
-  // NOTE: if no configured fields changed, do not trigger
-  if (
-    changed &&
-    changed.length &&
-    changed
-      .filter(
-        (name) => !['linkTo', 'hasOne', 'hasMany', 'belongsToMany'].includes(collection.getField(name).options.type),
-      )
-      .every((name) => !data.changedWithAssociations(getFieldRawName(collection, name)))
-  ) {
-    return;
-  }
-
-  // NOTE: if no configured condition, or not match, do not trigger
-  if (isValidFilter(condition) && !(mode & MODE_BITMAP.DESTROY)) {
-    // TODO: change to map filter format to calculation format
-    // const calculation = toCalculation(condition);
-    const count = await repository.count({
-      filter: {
-        $and: [condition, { [filterTargetKey]: data[filterTargetKey] }],
-      },
-      context,
-      transaction,
-    });
-
-    if (!count) {
+  // async function, should return promise
+  private static async handler(this: CollectionTrigger, workflow: WorkflowModel, data: Model, options) {
+    const [dataSourceName] = parseCollectionName(workflow.config.collection);
+    const transaction = this.workflow.useDataSourceTransaction(dataSourceName, options.transaction);
+    const ctx = await this.prepare(workflow, data, { ...options, transaction });
+    if (!ctx) {
       return;
+    }
+    const { stack } = options.context ?? {};
+    if (workflow.sync) {
+      await this.workflow.trigger(workflow, ctx, {
+        transaction,
+        stack,
+      });
+    } else {
+      if (transaction) {
+        transaction.afterCommit(() => {
+          this.workflow.trigger(workflow, ctx, { stack });
+        });
+      } else {
+        this.workflow.trigger(workflow, ctx, { stack });
+      }
     }
   }
 
-  let result = data;
+  async prepare(workflow: WorkflowModel, data: Model | Record<string, any> | string | number, options) {
+    const { condition, changed, mode, appends } = workflow.config;
+    const [dataSourceName, collectionName] = parseCollectionName(workflow.config.collection);
+    const { collectionManager } = this.workflow.app.dataSourceManager.dataSources.get(dataSourceName);
+    const collection: Collection = (collectionManager as SequelizeCollectionManager).getCollection(collectionName);
+    const { transaction, context } = options;
+    const { repository, filterTargetKey } = collection;
 
-  if (appends?.length && !(mode & MODE_BITMAP.DESTROY)) {
-    const includeFields = appends.reduce((set, field) => {
-      set.add(field.split('.')[0]);
-      set.add(field);
-      return set;
-    }, new Set());
+    let target = data;
+    let filterByTk;
+    let loadNeeded = false;
+    if (target && typeof target === 'object') {
+      filterByTk = Array.isArray(filterTargetKey)
+        ? pick(
+            target,
+            filterTargetKey.sort((a, b) => a.localeCompare(b)),
+          )
+        : target[filterTargetKey];
+    } else {
+      filterByTk = target;
+      loadNeeded = true;
+    }
+    // NOTE: if no configured fields changed, do not trigger
+    if (
+      target instanceof Model &&
+      changed &&
+      changed.length &&
+      changed
+        .filter((name) => {
+          const field = collection.getField(name);
+          return field && !['linkTo', 'hasOne', 'hasMany', 'belongsToMany'].includes(field.options.type);
+        })
+        .every((name) => !(<Model>target).changedWithAssociations(getFieldRawName(collection, name)))
+    ) {
+      return null;
+    }
 
-    // @ts-ignore
-    result = await repository.findOne({
-      filterByTk: data[filterTargetKey],
-      appends: Array.from(includeFields),
-      transaction,
-    });
+    // NOTE: if no configured condition, or not match, do not trigger
+    if (isValidFilter(condition) && !(mode & MODE_BITMAP.DESTROY)) {
+      // TODO: change to map filter format to calculation format
+      // const calculation = toCalculation(condition);
+      const count = await repository.count({
+        filterByTk,
+        filter: condition,
+        context,
+        transaction,
+      });
+
+      if (!count) {
+        return null;
+      }
+    }
+
+    if (loadNeeded || (appends?.length && !(mode & MODE_BITMAP.DESTROY))) {
+      const includeFields = appends.reduce((set, field) => {
+        set.add(field.split('.')[0]);
+        set.add(field);
+        return set;
+      }, new Set());
+
+      target = await repository.findOne({
+        filterByTk,
+        appends: Array.from(includeFields),
+        transaction,
+      });
+    }
+
+    return {
+      data: toJSON(target),
+    };
   }
-
-  // TODO: `result.toJSON()` throws error
-  const json = toJSON(result);
-
-  if (workflow.sync) {
-    await this.workflow.trigger(
-      workflow,
-      { data: json, stack: context?.stack },
-      {
-        transaction: this.workflow.useDataSourceTransaction(dataSourceName, transaction),
-      },
-    );
-  } else {
-    this.workflow.trigger(workflow, { data: json, stack: context?.stack });
-  }
-}
-
-export default class CollectionTrigger extends Trigger {
-  events = new Map();
 
   on(workflow: WorkflowModel) {
     const { collection, mode } = workflow.config;
@@ -137,7 +165,7 @@ export default class CollectionTrigger extends Trigger {
       const name = getHookId(workflow, `${collection}.${type}`);
       if (mode & key) {
         if (!this.events.has(name)) {
-          const listener = handler.bind(this, workflow);
+          const listener = (<typeof CollectionTrigger>this.constructor).handler.bind(this, workflow);
           this.events.set(name, listener);
           db.on(event, listener);
         }
@@ -175,26 +203,46 @@ export default class CollectionTrigger extends Trigger {
     }
   }
 
-  async validateEvent(workflow: WorkflowModel, context: any, options: Transactionable): Promise<boolean> {
-    if (context.stack) {
-      const existed = await workflow.countExecutions({
-        where: {
-          id: context.stack,
-        },
-        transaction: options.transaction,
-      });
+  // async validateEvent(workflow: WorkflowModel, context: any, options: Transactionable): Promise<boolean> {
+  //   if (context.stack) {
+  //     const existed = await workflow.countExecutions({
+  //       where: {
+  //         id: context.stack,
+  //       },
+  //       transaction: options.transaction,
+  //     });
 
-      if (existed) {
-        this.workflow
-          .getLogger(workflow.id)
-          .warn(
-            `workflow ${workflow.id} has already been triggered in stack executions (${context.stack}), and newly triggering will be skipped.`,
-          );
+  //     if (existed) {
+  //       this.workflow
+  //         .getLogger(workflow.id)
+  //         .warn(
+  //           `workflow ${workflow.id} has already been triggered in stack executions (${context.stack}), and newly triggering will be skipped.`,
+  //         );
 
-        return false;
-      }
+  //       return false;
+  //     }
+  //   }
+
+  //   return true;
+  // }
+
+  async execute(workflow: WorkflowModel, values, options: EventOptions) {
+    const ctx = await this.prepare(workflow, values?.data, options);
+    const [dataSourceName] = parseCollectionName(workflow.config.collection);
+    const { transaction } = options;
+    return this.workflow.trigger(workflow, ctx, {
+      ...options,
+      transaction: this.workflow.useDataSourceTransaction(dataSourceName, transaction),
+    });
+  }
+
+  validateContext(values) {
+    if (!values.data) {
+      return {
+        data: 'Data is required',
+      };
     }
 
-    return true;
+    return null;
   }
 }

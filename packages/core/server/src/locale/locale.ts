@@ -18,6 +18,7 @@ export interface ResourceStorer {
   getResources(lang: string): Promise<{
     [ns: string]: Record<string, string>;
   }>;
+  reset?: () => Promise<void>;
 }
 
 export class Locale {
@@ -38,6 +39,13 @@ export class Locale {
       this.app.log.debug('locale resource loaded', { submodule: 'locale', method: 'onAfterLoad' });
       this.app.setMaintainingMessage('locale resource loaded');
     });
+    this.app.syncMessageManager.subscribe('localeManager', async (message) => {
+      switch (message.type) {
+        case 'reload':
+          await this.reset();
+          return;
+      }
+    });
   }
 
   async load() {
@@ -50,8 +58,15 @@ export class Locale {
     await this.get(this.defaultLang);
   }
 
+  async reset() {
+    const storers = Array.from(this.resourceStorers.getValues());
+    const promises = storers.map((storer) => storer.reset());
+    await Promise.all([this.cache.reset(), ...promises]);
+  }
+
   async reload() {
-    await this.cache.reset();
+    await this.reset();
+    this.app.syncMessageManager.publish('localeManager', { type: 'reload' });
   }
 
   setLocaleFn(name: string, fn: (lang: string) => Promise<any>) {

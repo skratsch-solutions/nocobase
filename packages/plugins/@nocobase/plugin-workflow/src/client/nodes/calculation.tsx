@@ -7,6 +7,9 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
+import React from 'react';
+import { CalculatorOutlined } from '@ant-design/icons';
+
 import { SchemaInitializerItemType } from '@nocobase/client';
 import { Evaluator, evaluators, getOptions } from '@nocobase/evaluators/client';
 
@@ -20,8 +23,9 @@ import { Instruction } from '.';
 export default class extends Instruction {
   title = `{{t("Calculation", { ns: "${NAMESPACE}" })}}`;
   type = 'calculation';
-  group = 'control';
+  group = 'calculation';
   description = `{{t("Calculate an expression based on a calculation engine and obtain a value as the result. Variables in the upstream nodes can be used in the expression.", { ns: "${NAMESPACE}" })}}`;
+  icon = (<CalculatorOutlined style={{}} />);
   fieldset = {
     engine: {
       type: 'string',
@@ -32,7 +36,7 @@ export default class extends Instruction {
         options: getOptions(),
       },
       required: true,
-      default: 'math.js',
+      default: 'formula.js',
     },
     expression: {
       type: 'string',

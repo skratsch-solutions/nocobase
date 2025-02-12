@@ -103,7 +103,7 @@ test.describe('field data', () => {
 
     //配置Manual节点
     await page.goto(`admin/workflow/workflows/${workflowId}`);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
     const preCreateRecordNodePom = new CreateRecordNode(page, preCreateRecordNodeTitle);
     await preCreateRecordNodePom.addNodeButton.click();
     await page.getByRole('button', { name: 'manual', exact: true }).click();
@@ -140,16 +140,12 @@ test.describe('field data', () => {
 
     const newPage = mockPage();
     await newPage.goto();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
     await page.getByLabel('schema-initializer-Grid-page:addBlock').hover();
     await page.getByRole('menuitem', { name: 'check-square Workflow todos' }).click();
     await page.mouse.move(300, 0, { steps: 100 });
     await page.waitForTimeout(300);
-    await page
-      .locator(`//td[span[text()="${manualNodeName}"]]`)
-      .locator('xpath=preceding-sibling::td[1]')
-      .locator('text=View')
-      .click();
+    await page.locator('tr', { hasText: manualNodeName }).getByLabel('action-Action.Link-View-view-').click();
     await expect(page.getByText(triggerNodeCollectionRecordOne)).toBeAttached();
     // 4、后置处理：删除工作流
     await apiDeleteWorkflow(workflowId);
@@ -265,7 +261,7 @@ test.describe('field data', () => {
 
     //配置Manual节点
     await page.goto(`admin/workflow/workflows/${workflowId}`);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
     const preAggregateNodePom = new AggregateNode(page, preAggregateNodeTitle);
     await preAggregateNodePom.addNodeButton.click();
     await page.getByRole('button', { name: 'manual', exact: true }).click();
@@ -300,20 +296,16 @@ test.describe('field data', () => {
 
     const newPage = mockPage();
     await newPage.goto();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
     await page.getByLabel('schema-initializer-Grid-page:addBlock').hover();
     await page.getByRole('menuitem', { name: 'check-square Workflow todos' }).click();
     await page.mouse.move(300, 0, { steps: 100 });
     await page.waitForTimeout(300);
-    await page
-      .locator(`//td[span[text()="${manualNodeName}"]]`)
-      .locator('xpath=preceding-sibling::td[1]')
-      .locator('text=View')
-      .click();
+    await page.locator('tr', { hasText: manualNodeName }).getByLabel('action-Action.Link-View-view-').click();
     // await expect(page.getByText('8')).toBeAttached();
     await expect(
       page
-        .getByLabel(`block-item-CardItem-users_jobs-workflow-todo-${preAggregateNodeTitle}`)
+        .getByLabel(`block-item-CardItem-users_jobs-${preAggregateNodeTitle}`)
         .locator('.ant-card-body')
         .getByText('8'),
     ).toBeAttached();

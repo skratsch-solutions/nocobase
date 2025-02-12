@@ -7,23 +7,23 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
-import { FormOutlined } from '@ant-design/icons';
+import { ProjectOutlined } from '@ant-design/icons';
 import { FormLayout } from '@formily/antd-v5';
 import { SchemaOptionsContext } from '@formily/react';
 import React, { useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
-  useSchemaInitializer,
-  useSchemaInitializerItem,
-  useCollectionManager_deprecated,
-  useGlobalTheme,
-  FormDialog,
-  SchemaComponent,
-  DataBlockInitializer,
-  SchemaComponentOptions,
   Collection,
   CollectionFieldOptions,
+  DataBlockInitializer,
+  FormDialog,
+  SchemaComponent,
+  SchemaComponentOptions,
+  useCollectionManager_deprecated,
+  useGlobalTheme,
+  useSchemaInitializer,
+  useSchemaInitializerItem,
 } from '@nocobase/client';
 import { createGanttBlockUISchema } from './createGanttBlockUISchema';
 
@@ -46,8 +46,8 @@ export const GanttBlockInitializer = ({
   return (
     <DataBlockInitializer
       {...itemConfig}
-      componentType={'Calendar'}
-      icon={<FormOutlined />}
+      componentType={`Gantt`}
+      icon={<ProjectOutlined rotate={90} />}
       onCreateBlockSchema={async (options) => {
         if (createBlockSchema) {
           return createBlockSchema(options);
@@ -80,7 +80,7 @@ export const useCreateGanttBlock = () => {
         };
       });
     const dateFields = collectionFields
-      ?.filter((field) => field.type === 'date')
+      ?.filter((field) => ['date', 'datetime', 'dateOnly', 'datetimeNoTz'].includes(field.type))
       ?.map((field) => {
         return {
           label: field?.uiSchema?.title,

@@ -19,7 +19,9 @@ import {
   useDesignable,
   useFormItemInitializerFields,
   useGetAriaLabelOfDesigner,
+  useOpenModeContext,
   useSchemaInitializerRender,
+  ParentCollectionFields,
 } from '@nocobase/client';
 import { Space } from 'antd';
 import React from 'react';
@@ -117,6 +119,10 @@ const commonOptions = {
       useChildren: useFormItemInitializerFields,
     },
     {
+      name: 'parentCollectionFields',
+      Component: ParentCollectionFields,
+    },
+    {
       type: 'itemGroup',
       divider: true,
       title: '{{t("Display association fields")}}',
@@ -137,6 +143,13 @@ const commonOptions = {
     {
       name: 'openMode',
       Component: SchemaInitializerOpenModeSchemaItems,
+      useComponentProps() {
+        const { hideOpenMode } = useOpenModeContext();
+        return {
+          openMode: !hideOpenMode,
+          openSize: !hideOpenMode,
+        };
+      },
     },
   ],
 };

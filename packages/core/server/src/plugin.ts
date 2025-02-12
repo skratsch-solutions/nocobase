@@ -9,14 +9,14 @@
 
 /* istanbul ignore file -- @preserve */
 
-import { Model } from '@nocobase/database';
+import { Model, Transactionable } from '@nocobase/database';
 import { LoggerOptions } from '@nocobase/logger';
 import { fsExists } from '@nocobase/utils';
 import fs from 'fs';
 import type { TFuncKey, TOptions } from 'i18next';
 import { resolve } from 'path';
 import { Application } from './application';
-import { InstallOptions, getExposeChangelogUrl, getExposeReadmeUrl } from './plugin-manager';
+import { getExposeChangelogUrl, getExposeReadmeUrl, InstallOptions } from './plugin-manager';
 import { checkAndGetCompatible, getPluginBasePath } from './plugin-manager/utils';
 
 export interface PluginInterface {
@@ -133,6 +133,15 @@ export abstract class Plugin<O = any> implements PluginInterface {
 
   async afterRemove() {}
 
+  async handleSyncMessage(message: any) {}
+  async sendSyncMessage(message: any, options?: Transactionable) {
+    if (!this.name) {
+      throw new Error(`plugin name invalid`);
+    }
+
+    await this.app.syncMessageManager.publish(this.name, message, options);
+  }
+
   /**
    * @deprecated
    */
@@ -166,6 +175,7 @@ export abstract class Plugin<O = any> implements PluginInterface {
 
   private async getPluginBasePath() {
     if (!this.options.packageName) {
+      this.app.log.trace(`plugin '${this.name}' is missing packageName`);
       return;
     }
     return getPluginBasePath(this.options.packageName);
@@ -181,6 +191,7 @@ export abstract class Plugin<O = any> implements PluginInterface {
     }
     const directory = resolve(basePath, 'server/collections');
     if (await fsExists(directory)) {
+      this.app.log.trace(`load plugin collections [${this.name}]`);
       await this.db.import({
         directory,
         from: this.options.packageName,

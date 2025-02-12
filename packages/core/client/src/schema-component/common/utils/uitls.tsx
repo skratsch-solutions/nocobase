@@ -7,12 +7,14 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
+import { dayjs, getPickerFormat, Handlebars } from '@nocobase/utils/client';
 import _, { every, findIndex, some } from 'lodash';
+import { replaceVariableValue } from '../../../block-provider/hooks';
 import { VariableOption, VariablesContextType } from '../../../variables/types';
 import { isVariable } from '../../../variables/utils/isVariable';
 import { transformVariableValue } from '../../../variables/utils/transformVariableValue';
+import { inferPickerType } from '../../antd/date-picker/util';
 import { getJsonLogic } from '../../common/utils/logic';
-
 type VariablesCtx = {
   /** 当前登录的用户 */
   $user?: Record<string, any>;
@@ -78,16 +80,21 @@ export const conditionAnalyses = async ({
   ruleGroup,
   variables,
   localVariables,
+  variableNameOfLeftCondition,
 }: {
   ruleGroup;
   variables: VariablesContextType;
   localVariables: VariableOption[];
+  /**
+   * used to parse the variable name of the left condition value
+   * @default '$nForm'
+   */
+  variableNameOfLeftCondition?: string;
 }) => {
   const type = Object.keys(ruleGroup)[0] || '$and';
   const conditions = ruleGroup[type];
 
   let results = conditions.map(async (condition) => {
-    // fix https://nocobase.height.app/T-3152
     if ('$and' in condition || '$or' in condition) {
       return await conditionAnalyses({ ruleGroup: condition, variables, localVariables });
     }
@@ -99,22 +106,35 @@ export const conditionAnalyses = async ({
       return true;
     }
 
-    const targetVariableName = targetFieldToVariableString(getTargetField(condition));
-    const targetValue = variables.parseVariable(targetVariableName, localVariables);
+    const targetVariableName = targetFieldToVariableString(getTargetField(condition), variableNameOfLeftCondition);
+    const targetValue = variables
+      .parseVariable(targetVariableName, localVariables, {
+        doNotRequest: true,
+      })
+      .then(({ value }) => value);
 
     const parsingResult = isVariable(jsonlogic?.value)
-      ? [variables.parseVariable(jsonlogic?.value, localVariables), targetValue]
+      ? [variables.parseVariable(jsonlogic?.value, localVariables).then(({ value }) => value), targetValue]
       : [jsonlogic?.value, targetValue];
 
     try {
       const jsonLogic = getJsonLogic();
       const [value, targetValue] = await Promise.all(parsingResult);
       const targetCollectionField = await variables.getCollectionField(targetVariableName, localVariables);
+      let currentInputValue = transformVariableValue(targetValue, { targetCollectionField });
+      const comparisonValue = transformVariableValue(value, { targetCollectionField });
+      if (
+        targetCollectionField?.type &&
+        ['datetime', 'date', 'datetimeNoTz', 'dateOnly', 'unixTimestamp'].includes(targetCollectionField.type) &&
+        currentInputValue
+      ) {
+        const picker = inferPickerType(comparisonValue);
+        const format = getPickerFormat(picker);
+        currentInputValue = dayjs(currentInputValue).format(format);
+      }
+
       return jsonLogic.apply({
-        [operator]: [
-          transformVariableValue(targetValue, { targetCollectionField }),
-          transformVariableValue(value, { targetCollectionField }),
-        ],
+        [operator]: [currentInputValue, comparisonValue],
       });
     } catch (error) {
       throw error;
@@ -134,7 +154,43 @@ export const conditionAnalyses = async ({
  * @param targetField
  * @returns
  */
-export function targetFieldToVariableString(targetField: string[]) {
+function targetFieldToVariableString(targetField: string[], variableName = '$nForm') {
   // Action 中的联动规则虽然没有 form 上下文但是在这里也使用的是 `$nForm` 变量，这样实现更简单
-  return `{{ $nForm.${targetField.join('.')} }}`;
+  return `{{ ${variableName}.${targetField.join('.')} }}`;
+}
+
+const getVariablesData = (localVariables) => {
+  const data = {};
+  localVariables.map((v) => {
+    data[v.name] = v.ctx;
+  });
+  return data;
+};
+
+export async function getRenderContent(templateEngine, content, variables, localVariables, defaultParse) {
+  if (content && templateEngine === 'handlebars') {
+    try {
+      const renderedContent = Handlebars.compile(content);
+      // 处理渲染后的内容
+      const data = getVariablesData(localVariables);
+      const { $nDate } = variables?.ctxRef?.current || {};
+      const variableDate = {};
+      Object.keys($nDate || {}).map((v) => {
+        variableDate[v] = $nDate[v]();
+      });
+      const html = renderedContent({ ...variables?.ctxRef?.current, ...data, $nDate: variableDate });
+      return await defaultParse(html);
+    } catch (error) {
+      console.log(error);
+      return content;
+    }
+  } else {
+    try {
+      const html = await replaceVariableValue(content, variables, localVariables);
+      return await defaultParse(html);
+    } catch (error) {
+      console.log(error);
+      return content;
+    }
+  }
 }

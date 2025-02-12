@@ -7,10 +7,10 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
+import { Schema } from '@formily/react';
 import {
   Collection,
   CollectionFieldInterfaceManager,
-  CollectionFieldOptions,
   CollectionManager,
   SchemaInitializerItemType,
   i18n,
@@ -18,19 +18,18 @@ import {
   useCollectionManager_deprecated,
   useDataSourceManager,
   useVariables,
+  useLocalVariables,
 } from '@nocobase/client';
+import { flatten, parse, unflatten } from '@nocobase/utils/client';
+import { useMemoizedFn } from 'ahooks';
+import deepmerge from 'deepmerge';
+import { default as _, default as lodash } from 'lodash';
 import { useCallback, useContext, useMemo } from 'react';
 import { ChartDataContext } from '../block/ChartDataProvider';
-import { Schema } from '@formily/react';
-import { useChartsTranslation } from '../locale';
 import { ChartFilterContext } from '../filter/FilterProvider';
-import { useMemoizedFn } from 'ahooks';
-import { flatten, parse, unflatten } from '@nocobase/utils/client';
-import lodash from 'lodash';
-import { getFormulaComponent, getValuesByPath } from '../utils';
-import deepmerge from 'deepmerge';
 import { findSchema, getFilterFieldPrefix, parseFilterFieldName } from '../filter/utils';
-import _ from 'lodash';
+import { useChartsTranslation } from '../locale';
+import { getFormulaComponent, getValuesByPath } from '../utils';
 
 export const useCustomFieldInterface = () => {
   const { getInterface } = useCollectionManager_deprecated();
@@ -105,6 +104,7 @@ export const useChartFilter = () => {
   const action = fieldSchema?.['x-action'];
   const { fields: fieldProps, form } = useContext(ChartFilterContext);
   const variables = useVariables();
+  const localVariables = useLocalVariables();
 
   const getChartFilterFields = ({
     dataSource,
@@ -138,6 +138,7 @@ export const useChartFilter = () => {
           ...field.uiSchema?.['x-component-props'],
           'filter-operator': defaultOperator,
         },
+        'x-filter-operators': defaultOperator?.value,
       };
       if (field.interface === 'formula') {
         const component = getFormulaComponent(field.dataType) || 'Input';
@@ -195,6 +196,7 @@ export const useChartFilter = () => {
         'x-component-props': {
           'filter-operator': defaultOperator,
         },
+        'x-filter-operators': defaultOperator?.value,
       };
       if (defaultOperator?.noValue) {
         schema = {
@@ -420,7 +422,7 @@ export const useChartFilter = () => {
           if (['$user', '$date', '$nDate', '$nRole', '$nFilter'].some((n) => value.includes(n))) {
             return value;
           }
-          const result = variables?.parseVariable(value);
+          const result = variables?.parseVariable(value, localVariables).then(({ value }) => value);
           return result;
         },
       });

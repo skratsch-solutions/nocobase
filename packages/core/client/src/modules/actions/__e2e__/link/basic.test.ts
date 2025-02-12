@@ -8,7 +8,12 @@
  */
 
 import { expect, test } from '@nocobase/test/e2e';
-import { oneEmptyTableWithUsers, openInNewWidow } from './templates';
+import {
+  PopupAndSubPageWithParams,
+  URLSearchParamsUseAssociationFieldValue,
+  oneEmptyTableWithUsers,
+  openInNewWidow,
+} from './templates';
 
 test.describe('Link', () => {
   test('basic', async ({ page, mockPage, mockRecords }) => {
@@ -59,10 +64,10 @@ test.describe('Link', () => {
     await expect(page.getByRole('button', { name: users[1].username, exact: true })).toBeVisible();
 
     // 4. click the Link button，check the data of the table block
-    await page.getByLabel('action-Action.Link-Link-customize:link-users-table-0').click();
-    await expect(page.getByRole('button', { name: users[0].username, exact: true })).not.toBeVisible();
+    await page.getByLabel('action-Action.Link-Link-customize:link-users-table-1').click();
+    await expect(page.getByRole('button', { name: users[1].username, exact: true })).not.toBeVisible();
     await expect(page.getByRole('button', { name: 'nocobase', exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: users[1].username, exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: users[0].username, exact: true })).toBeVisible();
 
     // 5. Change the operator of the data scope from "is not" to "is"
     await page.getByLabel('block-item-CardItem-users-').hover();
@@ -74,15 +79,15 @@ test.describe('Link', () => {
     await page.getByRole('menuitemcheckbox', { name: 'URL search params right' }).click();
     await page.getByRole('menuitemcheckbox', { name: 'id', exact: true }).click();
     await page.getByRole('button', { name: 'OK', exact: true }).click();
-    await expect(page.getByRole('button', { name: users[0].username, exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: users[1].username, exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'nocobase', exact: true })).not.toBeVisible();
-    await expect(page.getByRole('button', { name: users[1].username, exact: true })).not.toBeVisible();
+    await expect(page.getByRole('button', { name: users[0].username, exact: true })).not.toBeVisible();
 
     // 6. Re-enter the page (to eliminate the query string in the URL), at this time the value of the variable is undefined, and all data should be displayed
     await nocoPage.goto();
-    await expect(page.getByRole('button', { name: users[0].username, exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'nocobase', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: users[1].username, exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'nocobase', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: users[0].username, exact: true })).toBeVisible();
   });
 
   test('open in new window', async ({ page, mockPage, mockRecords }) => {
@@ -113,5 +118,40 @@ test.describe('Link', () => {
 
     const newPage = page.context().pages()[1];
     expect(newPage.url().endsWith(otherPageUrl)).toBe(true);
+  });
+
+  test('popup and sub page with search params', async ({ page, mockPage, mockRecords }) => {
+    const nocoPage = mockPage(PopupAndSubPageWithParams);
+    const url = await nocoPage.getUrl();
+    await page.goto(url + '?name=abc');
+
+    // open popup with drawer mode
+    await page.getByLabel('action-Action.Link-View-view-').click();
+    await expect(page.getByLabel('block-item-CollectionField-').getByRole('textbox')).toHaveValue('abc');
+
+    await page.reload();
+    await expect(page.getByLabel('block-item-CollectionField-').getByRole('textbox')).toHaveValue('abc');
+
+    await page.goBack();
+    await page.getByLabel('action-Action.Link-View-view-').hover();
+    await page.getByLabel('designer-schema-settings-Action.Link-actionSettings:view-users').hover();
+    await page.getByRole('menuitem', { name: 'Open mode Drawer' }).click();
+    await page.getByRole('option', { name: 'Page' }).click();
+
+    // open sub page with page mode
+    await page.getByLabel('action-Action.Link-View-view-').click();
+    await expect(page.getByLabel('block-item-CollectionField-').getByRole('textbox')).toHaveValue('abc');
+
+    await page.reload();
+    await expect(page.getByLabel('block-item-CollectionField-').getByRole('textbox')).toHaveValue('abc');
+  });
+
+  test('URL search params: use association field value', async ({ page, mockPage, mockRecords }) => {
+    await mockPage(URLSearchParamsUseAssociationFieldValue).goto();
+
+    // After clicking the Link button, the browser URL will change, and the value of the input box using variables will be updated
+    await page.getByLabel('action-Action.Link-Link-').click();
+    await page.waitForTimeout(100);
+    await expect(page.getByLabel('block-item-CollectionField-')).toContainText(`Roles:adminmemberroot`);
   });
 });

@@ -13,6 +13,8 @@ import MockAdapter from 'axios-mock-adapter';
 import React, { Component } from 'react';
 import { Link, Outlet } from 'react-router-dom';
 import { describe } from 'vitest';
+import { CollectionFieldInterface } from '../../data-source';
+import { OpenModeProvider } from '../../modules/popup/OpenModeProvider';
 import { Application } from '../Application';
 import { Plugin } from '../Plugin';
 import { useApp } from '../hooks';
@@ -80,6 +82,32 @@ describe('Application', () => {
       });
       expect(app.getApiUrl('/test/bar')).toBe('https://123.1.2.3:13000/foo/api/test/bar');
       expect(app.getApiUrl('test/bar')).toBe('https://123.1.2.3:13000/foo/api/test/bar');
+    });
+  });
+
+  describe('getHref', () => {
+    it('default', () => {
+      const app = new Application({});
+      expect(app.getHref('test')).toBe('/test');
+      expect(app.getHref('/test')).toBe('/test');
+    });
+
+    it('custom', () => {
+      const app = new Application({ publicPath: '/nocobase' });
+      expect(app.getHref('/test')).toBe('/nocobase/test');
+      expect(app.getHref('test')).toBe('/nocobase/test');
+    });
+
+    it('sub app', () => {
+      const app = new Application({ name: 'sub1' });
+      expect(app.getHref('test')).toBe('/apps/sub1/test');
+      expect(app.getHref('/test')).toBe('/apps/sub1/test');
+    });
+
+    it('sub app', () => {
+      const app = new Application({ name: 'sub1', publicPath: '/nocobase/' });
+      expect(app.getHref('test')).toBe('/nocobase/apps/sub1/test');
+      expect(app.getHref('/test')).toBe('/nocobase/apps/sub1/test');
     });
   });
 
@@ -211,6 +239,7 @@ describe('Application', () => {
     it('initial', () => {
       const app = new Application({ router, providers: [Hello, [World, { name: 'aaa' }]] });
       expect(app.providers.slice(initialProvidersLength)).toEqual([
+        [OpenModeProvider, undefined],
         [Hello, undefined],
         [World, { name: 'aaa' }],
       ]);
@@ -220,6 +249,7 @@ describe('Application', () => {
       const app = new Application({ router, providers: [Hello] });
       app.addProviders([[World, { name: 'aaa' }], Foo]);
       expect(app.providers.slice(initialProvidersLength)).toEqual([
+        [OpenModeProvider, undefined],
         [Hello, undefined],
         [World, { name: 'aaa' }],
         [Foo, undefined],
@@ -230,6 +260,7 @@ describe('Application', () => {
       const app = new Application({ router, providers: [Hello] });
       app.addProvider(World, { name: 'aaa' });
       expect(app.providers.slice(initialProvidersLength)).toEqual([
+        [OpenModeProvider, undefined],
         [Hello, undefined],
         [World, { name: 'aaa' }],
       ]);
@@ -239,6 +270,7 @@ describe('Application', () => {
       const app = new Application({ router, providers: [Hello] });
       app.use(World, { name: 'aaa' });
       expect(app.providers.slice(initialProvidersLength)).toEqual([
+        [OpenModeProvider, undefined],
         [Hello, undefined],
         [World, { name: 'aaa' }],
       ]);
@@ -432,6 +464,45 @@ describe('Application', () => {
       expect(screen.getByText('AppError')).toBeInTheDocument();
 
       console.error = originalConsoleWarn;
+    });
+  });
+
+  describe('alias', () => {
+    test('addFieldInterfaceComponentOption', () => {
+      class TestInterface extends CollectionFieldInterface {
+        name = 'test';
+        default = {
+          type: 'string',
+          uiSchema: {
+            type: 'string',
+            'x-component': 'TestComponent',
+          },
+        };
+      }
+      const app = new Application({
+        dataSourceManager: {
+          fieldInterfaces: [TestInterface],
+        },
+      });
+      app.addFieldInterfaceComponentOption('test', {
+        label: 'A',
+        value: 'a',
+      });
+
+      expect(app.dataSourceManager.collectionFieldInterfaceManager.getFieldInterface('test').componentOptions)
+        .toMatchInlineSnapshot(`
+        [
+          {
+            "label": "{{t("TestComponent")}}",
+            "useProps": [Function],
+            "value": "TestComponent",
+          },
+          {
+            "label": "A",
+            "value": "a",
+          },
+        ]
+      `);
     });
   });
 });

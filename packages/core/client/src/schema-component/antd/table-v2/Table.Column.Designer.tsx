@@ -30,6 +30,9 @@ import { isPatternDisabled } from '../../../schema-settings/isPatternDisabled';
 import { useCompile, useDesignable, useFieldModeOptions } from '../../hooks';
 import { useAssociationFieldContext } from '../association-field/hooks';
 import { removeNullCondition } from '../filter';
+import { SchemaSettingsLinkageRules } from '../../../schema-settings';
+import { useCollection } from '../../../data-source';
+import { useSchemaToolbar } from '../../../application';
 
 export const useLabelFields = (collectionName?: any) => {
   // 需要在组件顶层调用
@@ -98,6 +101,12 @@ export const TableColumnDesigner = (props) => {
     readOnlyMode = 'read-pretty';
   }
   const isSelectFieldMode = isAssociationField && fieldMode === 'Select';
+
+  const StyleSetting = () => {
+    const { name } = useCollection();
+    const { linkageRulesProps } = useSchemaToolbar();
+    return <SchemaSettingsLinkageRules category={'style'} {...{ ...linkageRulesProps, collectionName: name }} />;
+  };
   return (
     <GeneralSchemaDesigner disableInitializer>
       <SchemaSettingsModalItem
@@ -163,7 +172,7 @@ export const TableColumnDesigner = (props) => {
             title: t('Column width'),
             properties: {
               width: {
-                default: columnSchema?.['x-component-props']?.['width'] || 200,
+                default: columnSchema?.['x-component-props']?.['width'] || 100,
                 'x-decorator': 'FormItem',
                 'x-component': 'InputNumber',
                 'x-component-props': {},
@@ -186,6 +195,7 @@ export const TableColumnDesigner = (props) => {
           dn.refresh();
         }}
       />
+      <StyleSetting />
       {interfaceCfg && interfaceCfg.sortable === true && !currentMode && (
         <SchemaSettingsSwitchItem
           title={t('Sortable')}

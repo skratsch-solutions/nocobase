@@ -12,8 +12,6 @@ import { BaseError } from '@nocobase/database';
 import { Plugin } from '@nocobase/server';
 import lodash from 'lodash';
 import { ErrorHandler } from './error-handler';
-import enUS from './locale/en_US';
-import zhCN from './locale/zh_CN';
 
 export class PluginErrorHandlerServer extends Plugin {
   errorHandler: ErrorHandler = new ErrorHandler();
@@ -47,7 +45,9 @@ export class PluginErrorHandlerServer extends Plugin {
     };
 
     this.errorHandler.register(
-      (err) => err?.errors?.length && err instanceof BaseError,
+      (err) =>
+        err?.errors?.length &&
+        (err.name === 'SequelizeValidationError' || err.name === 'SequelizeUniqueConstraintError'),
       (err, ctx) => {
         ctx.body = {
           errors: err.errors.map((err) => {
@@ -56,7 +56,7 @@ export class PluginErrorHandlerServer extends Plugin {
             return {
               message: t(err.type, {
                 ns: this.i18nNs,
-                field: t(title, { ns: 'lm-collections' }),
+                field: t(title, { ns: ['lm-collections', 'client'] }),
               }),
             };
           }),
@@ -67,8 +67,6 @@ export class PluginErrorHandlerServer extends Plugin {
   }
 
   async load() {
-    this.app.i18n.addResources('zh-CN', this.i18nNs, zhCN);
-    this.app.i18n.addResources('en-US', this.i18nNs, enUS);
-    this.app.use(this.errorHandler.middleware(), { before: 'cors', tag: 'errorHandler' });
+    this.app.use(this.errorHandler.middleware(), { after: 'i18n', tag: 'errorHandler', before: 'cors' });
   }
 }

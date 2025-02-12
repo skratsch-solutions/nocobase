@@ -7,12 +7,13 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
+import { Schema } from '@formily/react';
 import { ButtonProps, DrawerProps, ModalProps } from 'antd';
 import { ComponentType } from 'react';
-import { Schema } from '@formily/react';
 
 export type OpenSize = 'small' | 'middle' | 'large';
 export interface ActionContextProps {
+  /** Currently only used for Action.Popover */
   button?: React.JSX.Element;
   visible?: boolean;
   setVisible?: (v: boolean) => void;
@@ -87,7 +88,11 @@ export type ComposedAction = React.FC<ActionProps> & {
   [key: string]: any;
 };
 
-export type ActionDrawerProps<T = DrawerProps> = T & { footerNodeName?: string };
+export type ActionDrawerProps<T = DrawerProps> = T & {
+  footerNodeName?: string;
+  /** 当前弹窗嵌套的层级 */
+  level?: number;
+};
 
 export type ComposedActionDrawer<T = DrawerProps> = React.FC<ActionDrawerProps<T>> & {
   Footer?: React.FC;

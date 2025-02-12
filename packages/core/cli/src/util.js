@@ -11,11 +11,13 @@ const net = require('net');
 const chalk = require('chalk');
 const execa = require('execa');
 const fg = require('fast-glob');
-const { dirname, join, resolve, sep } = require('path');
+const { dirname, join, resolve, sep, isAbsolute } = require('path');
 const { readFile, writeFile } = require('fs').promises;
 const { existsSync, mkdirSync, cpSync, writeFileSync } = require('fs');
 const dotenv = require('dotenv');
-const fs = require('fs');
+const fs = require('fs-extra');
+const os = require('os');
+const moment = require('moment-timezone');
 
 exports.isPackageValid = (pkg) => {
   try {
@@ -162,6 +164,14 @@ exports.promptForTs = () => {
   console.log(chalk.green('WAIT: ') + 'TypeScript compiling...');
 };
 
+exports.downloadPro = async () => {
+  const { NOCOBASE_PKG_USERNAME, NOCOBASE_PKG_PASSWORD } = process.env;
+  if (!(NOCOBASE_PKG_USERNAME && NOCOBASE_PKG_PASSWORD)) {
+    return;
+  }
+  await exports.run('yarn', ['nocobase', 'pkg', 'download-pro']);
+};
+
 exports.updateJsonFile = async (target, fn) => {
   const content = await readFile(target, 'utf-8');
   const json = JSON.parse(content);
@@ -286,6 +296,7 @@ function buildIndexHtml(force = false) {
   const data = fs.readFileSync(tpl, 'utf-8');
   const replacedData = data
     .replace(/\{\{env.APP_PUBLIC_PATH\}\}/g, process.env.APP_PUBLIC_PATH)
+    .replace(/\{\{env.API_CLIENT_STORAGE_TYPE\}\}/g, process.env.API_CLIENT_STORAGE_TYPE)
     .replace(/\{\{env.API_CLIENT_STORAGE_PREFIX\}\}/g, process.env.API_CLIENT_STORAGE_PREFIX)
     .replace(/\{\{env.API_BASE_URL\}\}/g, process.env.API_BASE_URL || process.env.API_BASE_PATH)
     .replace(/\{\{env.WS_URL\}\}/g, process.env.WEBSOCKET_URL || '')
@@ -296,6 +307,51 @@ function buildIndexHtml(force = false) {
 
 exports.buildIndexHtml = buildIndexHtml;
 
+function getTimezonesByOffset(offset) {
+  if (!/^[+-]\d{1,2}:\d{2}$/.test(offset)) {
+    return offset;
+  }
+  const offsetMinutes = moment.duration(offset).asMinutes();
+  return moment.tz.names().find((timezone) => {
+    return moment.tz(timezone).utcOffset() === offsetMinutes;
+  });
+}
+
+function areTimeZonesEqual(timeZone1, timeZone2) {
+  if (timeZone1 === timeZone2) {
+    return true;
+  }
+  timeZone1 = getTimezonesByOffset(timeZone1);
+  timeZone2 = getTimezonesByOffset(timeZone2);
+  return moment.tz(timeZone1).format('Z') === moment.tz(timeZone2).format('Z');
+}
+
+function generateGatewayPath() {
+  if (process.env.SOCKET_PATH) {
+    if (isAbsolute(process.env.SOCKET_PATH)) {
+      return process.env.SOCKET_PATH;
+    }
+    return resolve(process.cwd(), process.env.SOCKET_PATH);
+  }
+  if (process.env.NOCOBASE_RUNNING_IN_DOCKER === 'true') {
+    return resolve(os.homedir(), '.nocobase', 'gateway.sock');
+  }
+  return resolve(process.cwd(), 'storage/gateway.sock');
+}
+
+function generatePm2Home() {
+  if (process.env.PM2_HOME) {
+    if (isAbsolute(process.env.PM2_HOME)) {
+      return process.env.PM2_HOME;
+    }
+    return resolve(process.cwd(), process.env.PM2_HOME);
+  }
+  if (process.env.NOCOBASE_RUNNING_IN_DOCKER === 'true') {
+    return resolve(os.homedir(), '.nocobase', 'pm2');
+  }
+  return resolve(process.cwd(), './storage/.pm2');
+}
+
 exports.initEnv = function initEnv() {
   const env = {
     APP_ENV: 'development',
@@ -303,27 +359,31 @@ exports.initEnv = function initEnv() {
     APP_PORT: 13000,
     API_BASE_PATH: '/api/',
     API_CLIENT_STORAGE_PREFIX: 'NOCOBASE_',
+    API_CLIENT_STORAGE_TYPE: 'localStorage',
     DB_DIALECT: 'sqlite',
     DB_STORAGE: 'storage/db/nocobase.sqlite',
-    DB_TIMEZONE: '+00:00',
+    // DB_TIMEZONE: '+00:00',
     DB_UNDERSCORED: parseEnv('DB_UNDERSCORED'),
     DEFAULT_STORAGE_TYPE: 'local',
     LOCAL_STORAGE_DEST: 'storage/uploads',
     PLUGIN_STORAGE_PATH: resolve(process.cwd(), 'storage/plugins'),
     MFSU_AD: 'none',
+    MAKO_AD: 'none',
     WS_PATH: '/ws',
-    SOCKET_PATH: 'storage/gateway.sock',
+    // PM2_HOME: generatePm2Home(),
+    // SOCKET_PATH: generateGatewayPath(),
     NODE_MODULES_PATH: resolve(process.cwd(), 'node_modules'),
-    PM2_HOME: resolve(process.cwd(), './storage/.pm2'),
     PLUGIN_PACKAGE_PREFIX: '@nocobase/plugin-,@nocobase/plugin-sample-,@nocobase/preset-',
     SERVER_TSCONFIG_PATH: './tsconfig.server.json',
     PLAYWRIGHT_AUTH_FILE: resolve(process.cwd(), 'storage/playwright/.auth/admin.json'),
     CACHE_DEFAULT_STORE: 'memory',
     CACHE_MEMORY_MAX: 2000,
+    BROWSERSLIST_IGNORE_OLD_DATA: true,
     PLUGIN_STATICS_PATH: '/static/plugins/',
     LOGGER_BASE_PATH: 'storage/logs',
     APP_SERVER_BASE_URL: '',
     APP_PUBLIC_PATH: '/',
+    WATCH_FILE: resolve(process.cwd(), 'storage/app.watch.ts'),
   };
 
   if (
@@ -375,5 +435,39 @@ exports.initEnv = function initEnv() {
   if (!process.env.__env_modified__ && process.env.APP_SERVER_BASE_URL && !process.env.API_BASE_URL) {
     process.env.API_BASE_URL = process.env.APP_SERVER_BASE_URL + process.env.API_BASE_PATH;
     process.env.__env_modified__ = true;
+  }
+
+  if (!process.env.TZ) {
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    process.env.TZ = getTimezonesByOffset(process.env.DB_TIMEZONE || timeZone);
+  }
+
+  if (!process.env.DB_TIMEZONE) {
+    process.env.DB_TIMEZONE = process.env.TZ;
+  }
+
+  if (!/^[+-]\d{1,2}:\d{2}$/.test(process.env.DB_TIMEZONE)) {
+    process.env.DB_TIMEZONE = moment.tz(process.env.DB_TIMEZONE).format('Z');
+  }
+
+  if (!areTimeZonesEqual(process.env.DB_TIMEZONE, process.env.TZ)) {
+    throw new Error(
+      `process.env.DB_TIMEZONE="${process.env.DB_TIMEZONE}" and process.env.TZ="${process.env.TZ}" are different`,
+    );
+  }
+
+  process.env.PM2_HOME = generatePm2Home();
+  process.env.SOCKET_PATH = generateGatewayPath();
+  fs.mkdirpSync(dirname(process.env.SOCKET_PATH), { force: true, recursive: true });
+  fs.mkdirpSync(process.env.PM2_HOME, { force: true, recursive: true });
+};
+
+exports.generatePlugins = function () {
+  try {
+    require.resolve('@nocobase/devtools/umiConfig');
+    const { generatePlugins } = require('@nocobase/devtools/umiConfig');
+    generatePlugins();
+  } catch (error) {
+    return;
   }
 };

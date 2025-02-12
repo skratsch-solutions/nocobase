@@ -30,6 +30,7 @@ export const EditTitle = () => {
   const fieldSchema = useFieldSchema();
   const { t } = useTranslation();
   const { dn } = useDesignable();
+  const compile = useCompile();
   const collectionField = getField(fieldSchema['name']) || getCollectionJoinField(fieldSchema['x-collection-field']);
 
   return collectionField ? (
@@ -53,16 +54,16 @@ export const EditTitle = () => {
         } as ISchema
       }
       onSubmit={({ title }) => {
-        if (title) {
-          field.title = title;
-          fieldSchema.title = title;
-          dn.emit('patch', {
-            schema: {
-              'x-uid': fieldSchema['x-uid'],
-              title: fieldSchema.title,
-            },
-          });
-        }
+        const result = title.trim() === '' ? collectionField?.uiSchema?.title : title;
+        field.title = compile(result);
+        fieldSchema.title = title;
+        dn.emit('patch', {
+          schema: {
+            'x-uid': fieldSchema['x-uid'],
+            title: fieldSchema.title,
+          },
+        });
+
         dn.refresh();
       }}
     />
@@ -188,6 +189,7 @@ export const EditValidationRules = () => {
   const collectionField = getField(fieldSchema['name']) || getCollectionJoinField(fieldSchema['x-collection-field']);
   const interfaceConfig = getInterface(collectionField?.interface);
   const validateSchema = interfaceConfig?.['validateSchema']?.(fieldSchema);
+  const customPredicate = (value) => value !== null && value !== undefined && !Number.isNaN(value);
 
   return form && !form?.readPretty && validateSchema ? (
     <SchemaSettingsModalItem
@@ -280,7 +282,7 @@ export const EditValidationRules = () => {
       onSubmit={(v) => {
         const rules = [];
         for (const rule of v.rules) {
-          rules.push(_.pickBy(rule, _.identity));
+          rules.push(_.pickBy(rule, customPredicate));
         }
         const schema = {
           ['x-uid']: fieldSchema['x-uid'],
@@ -302,6 +304,7 @@ export const EditValidationRules = () => {
         }
         const concatValidator = _.concat([], collectionField?.uiSchema?.['x-validator'] || [], rules);
         field.validator = concatValidator;
+        field.required = fieldSchema.required as any;
         fieldSchema['x-validator'] = rules;
         schema['x-validator'] = rules;
         dn.emit('patch', {
@@ -494,7 +497,6 @@ export const EditOperator = () => {
   const { dn } = useDesignable();
   const operatorList = useOperatorList();
   const { getOperator, collectOperator } = useOperators();
-
   if (operatorList.length && !getOperator(fieldSchema.name)) {
     collectOperator(fieldSchema.name, operatorList[0].value);
   }
@@ -510,22 +512,23 @@ export const EditOperator = () => {
         _.set(fieldSchema, 'x-filter-operator', v);
 
         const operator = operatorList.find((item) => item.value === v);
-        let componentProps = {};
-
+        let componentProps = { ...fieldSchema['x-component-props'] };
+        field.value = undefined; //切换操作符清空字段值
         // 根据操作符的配置，设置组件的属性
-        if (operator?.schema?.['x-component']) {
+        if (operator?.schema?.['x-component'] && !operator?.onlyFilterAction) {
           _.set(fieldSchema, 'x-component-props.component', operator.schema?.['x-component']);
           _.set(field, 'componentProps.component', operator.schema?.['x-component']);
-          field.reset();
           componentProps = {
+            ...fieldSchema['x-component-props'],
             component: operator.schema['x-component'],
+            ...field.componentProps,
             ...operator.schema?.['x-component-props'],
           };
         } else if (fieldSchema['x-component-props']?.component) {
           _.set(fieldSchema, 'x-component-props.component', null);
           _.set(field, 'componentProps.component', null);
-          field.reset();
           componentProps = {
+            ...fieldSchema['x-component-props'],
             component: null,
             ...operator.schema?.['x-component-props'],
           };

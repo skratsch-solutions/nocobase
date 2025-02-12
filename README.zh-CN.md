@@ -1,25 +1,14 @@
-[English](./README.md) | 简体中文
+[English](./README.md) | 简体中文 | [日本語](./README.ja-JP.md)
  
 https://github.com/nocobase/nocobase/assets/1267426/29623e45-9a48-4598-bb9e-9dd173ade553
 
-## 感谢你的支持！
+## 感谢支持
 <a href="https://trendshift.io/repositories/4112" target="_blank"><img src="https://trendshift.io/api/badge/repositories/4112" alt="nocobase%2Fnocobase | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 <a href="https://www.producthunt.com/posts/nocobase?embed=true&utm_source=badge-top-post-topic-badge&utm_medium=badge&utm_souce=badge-nocobase" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/top-post-topic-badge.svg?post_id=456520&theme=light&period=weekly&topic_id=267" alt="NocoBase - Scalability&#0045;first&#0044;&#0032;open&#0045;source&#0032;no&#0045;code&#0032;platform | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" /></a>
 
-## 最近重要更新
-- [v1.0.1-alpha.1：区块支持高度设置 - 2024/06/07](https://docs-cn.nocobase.com/welcome/changelog/20240607)
-- [v1.0.0-alpha.15：新增插件、改进「配置操作」交互 - 2024/05/19](https://docs-cn.nocobase.com/welcome/changelog/20240519)
-- [v1.0：新的里程碑 - 2024/04/28](https://docs-cn.nocobase.com/welcome/release/v1001-changelog)
-- [v0.21：优化区块性能 - 2024/03/29](https://docs-cn.nocobase.com/welcome/release/v0210-changelog)
-- [v0.20：支持多数据源 - 2024/03/03](https://docs-cn.nocobase.com/welcome/release/v0200-changelog)
-- [v0.19：应用流程优化 - 2024/01/08](https://blog-cn.nocobase.com/posts/release-v019/)
-- [v0.18：建立健全的测试体系 - 2023/12/21](https://blog-cn.nocobase.com/posts/release-v018/)
-- [v0.17：全新的 SchemaInitializer 和 SchemaSettings - 2023/12/11](https://blog-cn.nocobase.com/posts/release-v017/)
-- [v0.16：全新的缓存模块 - 2023/11/20](https://blog-cn.nocobase.com/posts/release-v016/)
-- [v0.15：全新的插件设置中心 - 2023/11/13](https://blog-cn.nocobase.com/posts/release-v015/)
-- [v0.14：全新的插件管理器，支持通过界面添加插件 - 2023/09/11](https://blog-cn.nocobase.com/posts/release-v014/)
-- [v0.13: 全新的应用状态流转 - 2023/08/24](https://blog-cn.nocobase.com/posts/release-v013/)
+## 发布日志
+我们的[博客](https://www.nocobase.com/cn/blog/timeline)会及时更新发布日志，并每周进行汇总。
 
 ## NocoBase 是什么
 
@@ -35,7 +24,7 @@ https://demo-cn.nocobase.com/new
 文档：  
 https://docs-cn.nocobase.com/
 
-社区：
+社区：  
 https://forum.nocobase.com/
 
 ## 与众不同之处
@@ -74,3 +63,9 @@ NocoBase 支持三种安装方式：
 - <a target="_blank" href="https://docs-cn.nocobase.com/welcome/getting-started/installation/git-clone">Git 源码安装</a>
 
    如果你想体验最新未发布版本，或者想参与贡献，需要在源码上进行修改、调试，建议选择这种安装方式，对开发技术水平要求较高，如果代码有更新，可以走 git 流程拉取最新代码。
+
+## 一键部署
+
+通过云厂商一键部署 NocoBase，并享受多种部署选项的灵活性：
+
+- [阿里云](https://computenest.console.aliyun.com/service/instance/create/default?type=user&ServiceName=NocoBase%20%E7%A4%BE%E5%8C%BA%E7%89%88)

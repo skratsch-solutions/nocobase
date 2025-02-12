@@ -18,7 +18,7 @@ test.describe('where map block can be added', () => {
 
     // 1. 在页面中添加地图区块，因为没有配置 Access key 等信息，所以会显示错误提示
     await page.getByLabel('schema-initializer-Grid-page:').hover();
-    await page.getByRole('menuitem', { name: 'table Map right' }).hover();
+    await page.getByRole('menuitem', { name: 'Map right' }).hover();
     await page.getByRole('menuitem', { name: 'map', exact: true }).click();
     await page.getByRole('button', { name: 'OK', exact: true }).click();
     await expect(
@@ -29,7 +29,7 @@ test.describe('where map block can be added', () => {
 
     // 2. 点击跳转按钮去配置页面，配置好后返回刚才的页面，应该能正常显示地图
     await page.getByRole('button', { name: 'Go to the configuration page' }).click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
     await page.waitForTimeout(1000);
     if (await page.getByRole('button', { name: 'Edit' }).first().isVisible()) {
       await page.getByRole('button', { name: 'Edit' }).first().click();
@@ -49,7 +49,7 @@ test.describe('where map block can be added', () => {
 
     // 4. 清空配置信息，以免影响其他测试用例
     await page.goto('/admin/settings/map');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
     await page.waitForTimeout(1000);
     await page.getByRole('button', { name: 'Edit' }).first().click();
     await page.getByLabel('Access key').clear();

@@ -16,8 +16,16 @@ import { useApp } from '../../../../application';
 import { SchemaSettings } from '../../../../application/schema-settings/SchemaSettings';
 import { useCollectionManager_deprecated, useCollection_deprecated } from '../../../../collection-manager';
 import { useFieldComponentName } from '../../../../common/useFieldComponentName';
-import { EditOperator, useDesignable, useValidateSchema } from '../../../../schema-component';
+import { fieldComponentSettingsItem } from '../../../../data-source/commonsSettingsItem';
+import { EditOperator, useDesignable, useValidateSchema, useCompile } from '../../../../schema-component';
 import { SchemaSettingsDefaultValue } from '../../../../schema-settings/SchemaSettingsDefaultValue';
+
+const fieldComponentNameMap = (name: string) => {
+  if (name === 'Select') {
+    return 'FilterSelect';
+  }
+  return name;
+};
 
 export const filterFormItemFieldSettings = new SchemaSettings({
   name: 'fieldSettings:FilterFormItem',
@@ -41,6 +49,7 @@ export const filterFormItemFieldSettings = new SchemaSettings({
               const { t } = useTranslation();
               const { dn } = useDesignable();
               const field = useField<Field>();
+              const compile = useCompile();
               const fieldSchema = useFieldSchema();
               const { getCollectionJoinField } = useCollectionManager_deprecated();
               const { getField } = useCollection_deprecated();
@@ -64,16 +73,16 @@ export const filterFormItemFieldSettings = new SchemaSettings({
                   },
                 } as ISchema,
                 onSubmit({ title }) {
-                  if (title) {
-                    field.title = title;
-                    fieldSchema.title = title;
-                    dn.emit('patch', {
-                      schema: {
-                        'x-uid': fieldSchema['x-uid'],
-                        title: fieldSchema.title,
-                      },
-                    });
-                  }
+                  const result = title.trim() === '' ? collectionField?.uiSchema?.title : title;
+                  field.title = compile(result);
+                  fieldSchema.title = result;
+                  dn.emit('patch', {
+                    schema: {
+                      'x-uid': fieldSchema['x-uid'],
+                      title: fieldSchema.title,
+                    },
+                  });
+
                   dn.refresh();
                 },
               };
@@ -202,6 +211,7 @@ export const filterFormItemFieldSettings = new SchemaSettings({
               const { getField } = useCollection_deprecated();
               const collectionField =
                 getField(fieldSchema['name']) || getCollectionJoinField(fieldSchema['x-collection-field']);
+              const customPredicate = (value) => value !== null && value !== undefined && !Number.isNaN(value);
 
               return {
                 title: t('Set validation rules'),
@@ -291,7 +301,7 @@ export const filterFormItemFieldSettings = new SchemaSettings({
                 onSubmit(v) {
                   const rules = [];
                   for (const rule of v.rules) {
-                    rules.push(_.pickBy(rule, _.identity));
+                    rules.push(_.pickBy(rule, customPredicate));
                   }
                   const schema = {
                     ['x-uid']: fieldSchema['x-uid'],
@@ -309,6 +319,7 @@ export const filterFormItemFieldSettings = new SchemaSettings({
                   }
                   const concatValidator = _.concat([], collectionField?.uiSchema?.['x-validator'] || [], rules);
                   field.validator = concatValidator;
+                  field.required = fieldSchema.required as any;
                   fieldSchema['x-validator'] = rules;
                   schema['x-validator'] = rules;
                   dn.emit('patch', {
@@ -327,6 +338,7 @@ export const filterFormItemFieldSettings = new SchemaSettings({
             name: 'operator',
             Component: EditOperator,
           },
+          fieldComponentSettingsItem,
         ];
       },
     },
@@ -343,7 +355,9 @@ export const filterFormItemFieldSettings = new SchemaSettings({
       useChildren() {
         const app = useApp();
         const fieldComponentName = useFieldComponentName();
-        const componentSettings = app.schemaSettingsManager.get(`fieldSettings:component:${fieldComponentName}`);
+        const componentSettings = app.schemaSettingsManager.get(
+          `fieldSettings:component:${fieldComponentNameMap(fieldComponentName)}`,
+        );
         return componentSettings?.items || [];
       },
     },

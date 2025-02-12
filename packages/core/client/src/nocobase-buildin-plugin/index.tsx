@@ -24,8 +24,9 @@ import { RemoteDocumentTitlePlugin } from '../document-title';
 import { PinnedListPlugin } from '../plugin-manager';
 import { PMPlugin } from '../pm';
 import { AdminLayoutPlugin, RouteSchemaComponent } from '../route-switch';
-import { AntdSchemaComponentPlugin, SchemaComponentPlugin } from '../schema-component';
+import { AntdSchemaComponentPlugin, PageTabs, SchemaComponentPlugin } from '../schema-component';
 import { ErrorFallback } from '../schema-component/antd/error-fallback';
+import { PagePopups } from '../schema-component/antd/page/PagePopups';
 import { AssociationFilterPlugin, SchemaInitializerPlugin } from '../schema-initializer';
 import { SchemaSettingsPlugin } from '../schema-settings';
 import { BlockTemplateDetails, BlockTemplatePage } from '../schema-templates';
@@ -40,7 +41,6 @@ const AppSpin = () => {
 };
 
 const useErrorProps = (app: Application, error: any) => {
-  const api = useAPIClient();
   if (!error) {
     return {};
   }
@@ -56,7 +56,7 @@ const useErrorProps = (app: Application, error: any) => {
             type="primary"
             key="try"
             onClick={() => {
-              api.auth.setToken(null);
+              app.apiClient.auth.setToken(null);
               window.location.reload();
             }}
           >
@@ -141,7 +141,7 @@ const getProps = (app: Application) => {
     };
   }
 
-  if (app.error.code === 'APP_ERROR' || app.error.code === 'LOAD_ERROR') {
+  if (['ENOENT', 'APP_ERROR', 'LOAD_ERROR'].includes(app.error.code)) {
     return {
       status: 'error',
       title: 'App error',
@@ -204,7 +204,11 @@ const getProps = (app: Application) => {
     return { ...props, ...commands[app.error?.command?.name] };
   }
 
-  return {};
+  return {
+    status: 'warning',
+    title: 'App warning',
+    subTitle: app.error?.message,
+  };
 };
 
 const AppMaintaining: FC<{ app: Application; error: Error }> = observer(
@@ -301,6 +305,18 @@ export class NocoBaseBuildInPlugin extends Plugin {
     this.router.add('admin.page', {
       path: '/admin/:name',
       Component: 'AdminDynamicPage',
+    });
+    this.router.add('admin.page.tab', {
+      path: '/admin/:name/tabs/:tabUid',
+      Component: PageTabs as any,
+    });
+    this.router.add('admin.page.popup', {
+      path: '/admin/:name/popups/*',
+      Component: PagePopups,
+    });
+    this.router.add('admin.page.tab.popup', {
+      path: '/admin/:name/tabs/:tabUid/popups/*',
+      Component: PagePopups,
     });
   }
 

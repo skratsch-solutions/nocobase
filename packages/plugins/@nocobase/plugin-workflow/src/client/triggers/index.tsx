@@ -67,7 +67,11 @@ export abstract class Trigger {
   description?: string;
   // group: string;
   useVariables?(config: Record<string, any>, options?: UseVariableOptions): VariableOption[];
-  fieldset: { [key: string]: ISchema };
+  fieldset: Record<string, ISchema>;
+  triggerFieldset?: Record<string, ISchema>;
+  validate(config: Record<string, any>): boolean {
+    return true;
+  }
   view?: ISchema;
   scope?: { [key: string]: any };
   components?: { [key: string]: any };
@@ -88,9 +92,16 @@ function TriggerExecution() {
 
   return (
     <SchemaComponent
+      components={{
+        Tooltip,
+      }}
       schema={{
         type: 'void',
         name: 'execution',
+        'x-decorator': 'Tooltip',
+        'x-decorator-props': {
+          title: lang('View result'),
+        },
         'x-component': 'Action',
         'x-component-props': {
           title: <InfoOutlined />,
@@ -131,12 +142,13 @@ function TriggerExecution() {
                 'x-decorator': 'FormItem',
                 'x-component': 'Input.JSON',
                 'x-component-props': {
-                  className: css`
-                    padding: 1em;
-                    background-color: #eee;
-                  `,
+                  className: styles.nodeJobResultClass,
+                  autoSize: {
+                    minRows: 4,
+                    maxRows: 32,
+                  },
                 },
-                'x-read-pretty': true,
+                'x-disabled': true,
               },
             },
           },
@@ -233,8 +245,10 @@ export const TriggerConfig = () => {
           className={cx(styles.nodeCardClass, 'invalid')}
           onClick={onOpenDrawer}
         >
-          <div className={cx(styles.nodeMetaClass, 'workflow-node-meta')}>
-            <Tag color="error">{lang('Unknown trigger')}</Tag>
+          <div className={styles.nodeHeaderClass}>
+            <div className={cx(styles.nodeMetaClass, 'workflow-node-meta')}>
+              <Tag color="error">{lang('Unknown trigger')}</Tag>
+            </div>
           </div>
           <div className="workflow-node-title">
             <Input.TextArea value={editingTitle} disabled autoSize />
@@ -253,11 +267,16 @@ export const TriggerConfig = () => {
       className={cx(styles.nodeCardClass)}
       onClick={onOpenDrawer}
     >
-      <div className={cx(styles.nodeMetaClass, 'workflow-node-meta')}>
-        <Tag color="gold">
-          <ThunderboltOutlined />
-          <span className="type">{compile(trigger.title)}</span>
-        </Tag>
+      <div className={styles.nodeHeaderClass}>
+        <div className={cx(styles.nodeMetaClass, 'workflow-node-meta')}>
+          <Tag color="gold">
+            <ThunderboltOutlined />
+            <span className="type">{compile(trigger.title)}</span>
+          </Tag>
+        </div>
+        <div className="workflow-node-actions">
+          <TriggerExecution />
+        </div>
       </div>
       <div className="workflow-node-title">
         <Input.TextArea
@@ -268,7 +287,6 @@ export const TriggerConfig = () => {
           disabled={workflow.executed}
         />
       </div>
-      <TriggerExecution />
       <ActionContextProvider
         value={{
           visible: editingConfig,
@@ -288,15 +306,15 @@ export const TriggerConfig = () => {
               name: `workflow-trigger-${workflow.id}`,
               type: 'void',
               properties: {
-                config: {
-                  type: 'void',
-                  'x-content': detailText,
-                  'x-component': Button,
-                  'x-component-props': {
-                    type: 'link',
-                    className: 'workflow-node-config-button',
-                  },
-                },
+                // config: {
+                //   type: 'void',
+                //   'x-content': detailText,
+                //   'x-component': Button,
+                //   'x-component-props': {
+                //     type: 'link',
+                //     className: 'workflow-node-config-button',
+                //   },
+                // },
                 drawer: {
                   type: 'void',
                   title: titleText,

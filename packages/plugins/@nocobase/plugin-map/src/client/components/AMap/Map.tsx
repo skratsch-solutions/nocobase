@@ -11,16 +11,15 @@ import AMapLoader from '@amap/amap-jsapi-loader';
 import '@amap/amap-jsapi-types';
 import { SyncOutlined } from '@ant-design/icons';
 import { useFieldSchema } from '@formily/react';
-import { css, useApp, useCollection_deprecated } from '@nocobase/client';
+import { css, useApp, useCollection_deprecated, useNavigateNoUpdate } from '@nocobase/client';
 import { useMemoizedFn } from 'ahooks';
 import { Alert, App, Button, Spin } from 'antd';
 import React, { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useMapConfiguration } from '../../hooks';
 import { useMapTranslation } from '../../locale';
 import { MapEditorType } from '../../types';
-import { Search } from './Search';
 import { useMapHeight } from '../hook';
+import { Search } from './Search';
 export interface AMapComponentProps {
   value?: any;
   onChange?: (value: number[]) => void;
@@ -109,7 +108,7 @@ export const AMapComponent = React.forwardRef<AMapForwardedRefProps, AMapCompone
 
   const overlay = useRef<AMap.Polygon>();
   const editor = useRef(null);
-  const navigate = useNavigate();
+  const navigate = useNavigateNoUpdate();
   const id = useRef(`nocobase-map-${type || ''}-${Date.now().toString(32)}`);
   const { modal } = App.useApp();
   const height = useMapHeight();
@@ -336,6 +335,24 @@ export const AMapComponent = React.forwardRef<AMapForwardedRefProps, AMapCompone
 
     const _define = (window as any).define;
     (window as any).define = undefined;
+
+    if (window.AMap) {
+      try {
+        requestIdleCallback(() => {
+          map.current = new AMap.Map(id.current, {
+            resizeEnable: true,
+            zoom,
+          } as AMap.MapOptions);
+          aMap.current = AMap;
+          setErrMessage('');
+          forceUpdate([]);
+        });
+        return;
+      } catch (err) {
+        setErrMessage(err);
+      }
+    }
+
     AMapLoader.load({
       key: accessKey,
       version: '2.0',

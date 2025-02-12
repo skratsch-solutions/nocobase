@@ -9,17 +9,22 @@
 
 import { useField, useFieldSchema } from '@formily/react';
 import {
-  useFormBlockContext,
+  removeNullCondition,
+  SchemaSettings,
+  SchemaSettingsBlockHeightItem,
+  SchemaSettingsBlockTitleItem,
   SchemaSettingsDataScope,
+  SchemaSettingsTemplate,
+  useBlockTemplateContext,
+  useCollection,
   useCollection_deprecated,
   useDesignable,
-  SchemaSettings,
-  SchemaSettingsBlockTitleItem,
-  removeNullCondition,
-  SchemaSettingsTemplate,
-  SchemaSettingsBlockHeightItem,
+  useFormBlockContext,
+  SchemaSettingsLayoutItem,
 } from '@nocobase/client';
+import { useTranslation } from 'react-i18next';
 import { useKanbanBlockContext } from './KanbanBlockProvider';
+
 export const kanbanSettings = new SchemaSettings({
   name: 'blockSettings:kanban',
   items: [
@@ -66,14 +71,44 @@ export const kanbanSettings = new SchemaSettings({
       name: 'template',
       Component: SchemaSettingsTemplate,
       useComponentProps() {
-        const { name } = useCollection_deprecated();
+        const { name } = useCollection();
+        const { componentNamePrefix } = useBlockTemplateContext();
         return {
-          componentName: 'Kanban',
+          componentName: `${componentNamePrefix}Kanban`,
           collectionName: name,
         };
       },
     },
-
+    {
+      name: 'allowDragAndDrop',
+      type: 'switch',
+      useComponentProps: () => {
+        const field = useField();
+        const fieldSchema = useFieldSchema();
+        const { t } = useTranslation();
+        const { dn } = useDesignable();
+        return {
+          title: t('Enable drag and drop sorting'),
+          checked: field.componentProps?.dragSort !== false,
+          onChange: async (dragSort) => {
+            field.componentProps = field.componentProps || {};
+            field.componentProps.dragSort = dragSort;
+            fieldSchema['x-component-props'] = fieldSchema['x-component-props'] || {};
+            fieldSchema['x-component-props'].dragSort = dragSort;
+            dn.emit('patch', {
+              schema: {
+                ['x-uid']: fieldSchema['x-uid'],
+                'x-component-props': fieldSchema['x-component-props'],
+              },
+            });
+          },
+        };
+      },
+    },
+    {
+      name: 'setBlockLayout',
+      Component: SchemaSettingsLayoutItem,
+    },
     {
       name: 'divider',
       type: 'divider',

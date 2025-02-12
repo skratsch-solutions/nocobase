@@ -7,13 +7,13 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
-import { Plugin } from '@nocobase/client';
-import { NAMESPACE } from '../constants';
-import { Configuration } from './Configuration';
+import { Plugin, lazy } from '@nocobase/client';
+// import { Configuration } from './Configuration';
+const { Configuration } = lazy(() => import('./Configuration'), 'Configuration');
 
 export class PluginAPIKeysClient extends Plugin {
   async load() {
-    this.pluginSettingsManager.add(NAMESPACE, {
+    this.pluginSettingsManager.add('api-keys', {
       icon: 'KeyOutlined',
       title: this.t('API keys'),
       Component: Configuration,

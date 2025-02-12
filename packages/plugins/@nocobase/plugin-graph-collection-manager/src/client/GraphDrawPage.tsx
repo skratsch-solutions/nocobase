@@ -19,8 +19,7 @@ import { SchemaOptionsContext } from '@formily/react';
 import {
   APIClientProvider,
   ApplicationContext,
-  CollectionCategroriesContext,
-  CollectionCategroriesProvider,
+  CollectionCategoriesContext,
   CurrentAppInfoContext,
   DataSourceApplicationProvider,
   SchemaComponent,
@@ -31,14 +30,14 @@ import {
   useCollectionManager_deprecated,
   useCompile,
   useCurrentAppInfo,
-  useDataSourceManager,
   useDataSource,
+  useDataSourceManager,
   useGlobalTheme,
 } from '@nocobase/client';
 import { App, Button, ConfigProvider, Layout, Spin, Switch, Tooltip } from 'antd';
 import dagre from 'dagre';
 import lodash from 'lodash';
-import React, { createContext, forwardRef, useContext, useEffect, useLayoutEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAsyncDataSource, useCreateActionAndRefreshCM } from './action-hooks';
 import { AddCollectionAction } from './components/AddCollectionAction';
@@ -52,6 +51,7 @@ import { SimpleNodeView } from './components/ViewNode';
 import useStyles from './style';
 import {
   cleanGraphContainer,
+  collection,
   formatData,
   getChildrenCollections,
   getDiffEdge,
@@ -59,7 +59,6 @@ import {
   getInheritCollections,
   getPopupContainer,
   useGCMTranslation,
-  collection,
 } from './utils';
 const { drop, groupBy, last, maxBy, minBy, take, uniq } = lodash;
 
@@ -384,13 +383,17 @@ export const GraphDrawPage = React.memo(() => {
   const [collectionList, setCollectionList] = useState<any>([]);
   const [loading, setLoading] = useState(false);
   const { collections, getCollections } = useCollectionManager_deprecated();
+  const categoryCtx = useContext(CollectionCategoriesContext);
+  const categoryCtxRef = useRef<any>();
+  categoryCtxRef.current = categoryCtx;
   const dm = useDataSourceManager();
   const currentAppInfo = useCurrentAppInfo();
   const app = useApp();
   const {
     data: { database },
-  } = currentAppInfo;
-  const categoryCtx = useContext(CollectionCategroriesContext);
+  } = currentAppInfo || {
+    data: { database: {} as any },
+  };
   const scope = { ...options?.scope };
   const components = { ...options?.components };
   const saveGraphPositionAction = async (data) => {
@@ -442,7 +445,6 @@ export const GraphDrawPage = React.memo(() => {
   };
 
   const dataSource = useDataSource();
-
   const initGraphCollections = () => {
     targetGraph = new Graph({
       container: document.getElementById('container')!,
@@ -520,7 +522,7 @@ export const GraphDrawPage = React.memo(() => {
             <DataSourceApplicationProvider dataSourceManager={dm} dataSource={dataSource?.key}>
               <APIClientProvider apiClient={api}>
                 <SchemaComponentOptions inherit scope={scope} components={components}>
-                  <CollectionCategroriesProvider {...categoryCtx}>
+                  <CollectionCategoriesContext.Provider value={categoryCtxRef.current}>
                     {/* TODO: 因为画布中的卡片是一次性注册进 Graph 的，这里的 theme 是存在闭包里的，因此当主题动态变更时，并不会触发卡片的重新渲染 */}
                     <ConfigProvider theme={theme as any}>
                       <div style={{ height: 'auto' }}>
@@ -531,7 +533,7 @@ export const GraphDrawPage = React.memo(() => {
                         </App>
                       </div>
                     </ConfigProvider>
-                  </CollectionCategroriesProvider>
+                  </CollectionCategoriesContext.Provider>
                 </SchemaComponentOptions>
               </APIClientProvider>
             </DataSourceApplicationProvider>

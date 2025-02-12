@@ -34,11 +34,14 @@ import { compose, normalizeContainer } from './utils';
 import { defineGlobalDeps } from './utils/globalDeps';
 import { getRequireJs } from './utils/requirejs';
 
+import { CollectionFieldInterfaceComponentOption } from '../data-source/collection-field-interface/CollectionFieldInterface';
 import { CollectionField } from '../data-source/collection-field/CollectionField';
 import { DataSourceApplicationProvider } from '../data-source/components/DataSourceApplicationProvider';
 import { DataBlockProvider } from '../data-source/data-block/DataBlockProvider';
 import { DataSourceManager, type DataSourceManagerOptions } from '../data-source/data-source/DataSourceManager';
 
+import type { CollectionFieldInterfaceFactory } from '../data-source';
+import { OpenModeProvider } from '../modules/popup/OpenModeProvider';
 import { AppSchemaComponentProvider } from './AppSchemaComponentProvider';
 import type { Plugin } from './Plugin';
 import type { RequireJS } from './utils/requirejs';
@@ -73,6 +76,8 @@ export interface ApplicationOptions {
 }
 
 export class Application {
+  public eventBus = new EventTarget();
+
   public providers: ComponentAndProps[] = [];
   public router: RouterManager;
   public scopes: Record<string, any> = {};
@@ -93,18 +98,29 @@ export class Application {
   public schemaInitializerManager: SchemaInitializerManager;
   public schemaSettingsManager: SchemaSettingsManager;
   public dataSourceManager: DataSourceManager;
-
   public name: string;
 
   loading = true;
   maintained = false;
   maintaining = false;
   error = null;
+  hasLoadError = false;
+
+  private wsAuthorized = false;
+
   get pm() {
     return this.pluginManager;
   }
   get disableAcl() {
     return this.options.disableAcl;
+  }
+
+  get isWsAuthorized() {
+    return this.wsAuthorized;
+  }
+
+  setWsAuthorized(authorized: boolean) {
+    this.wsAuthorized = authorized;
   }
 
   constructor(protected options: ApplicationOptions = {}) {
@@ -137,6 +153,51 @@ export class Application {
     this.i18n.on('languageChanged', (lng) => {
       this.apiClient.auth.locale = lng;
     });
+    this.initListeners();
+  }
+
+  private initListeners() {
+    this.eventBus.addEventListener('auth:tokenChanged', (event: CustomEvent) => {
+      this.setTokenInWebSocket(event.detail);
+    });
+
+    this.eventBus.addEventListener('maintaining:end', () => {
+      if (this.apiClient.auth.token) {
+        this.setTokenInWebSocket({
+          token: this.apiClient.auth.token,
+          authenticator: this.apiClient.auth.getAuthenticator(),
+        });
+      }
+    });
+  }
+
+  protected setTokenInWebSocket(options: { token: string; authenticator: string }) {
+    const { token, authenticator } = options;
+    if (this.maintaining) {
+      return;
+    }
+
+    this.ws.send(
+      JSON.stringify({
+        type: 'auth:token',
+        payload: {
+          token,
+          authenticator,
+        },
+      }),
+    );
+  }
+
+  setMaintaining(maintaining: boolean) {
+    // if maintaining is the same, do nothing
+    if (this.maintaining === maintaining) {
+      return;
+    }
+
+    this.maintaining = maintaining;
+    if (!maintaining) {
+      this.eventBus.dispatchEvent(new Event('maintaining:end'));
+    }
   }
 
   private initRequireJs() {
@@ -158,6 +219,7 @@ export class Application {
     });
     this.use(AntdAppProvider);
     this.use(DataSourceApplicationProvider, { dataSourceManager: this.dataSourceManager });
+    this.use(OpenModeProvider);
   }
 
   private addReactRouterComponents() {
@@ -204,6 +266,14 @@ export class Application {
     return this.getPublicPath() + pathname.replace(/^\//g, '');
   }
 
+  getHref(pathname: string) {
+    const name = this.name;
+    if (name && name !== 'main') {
+      return this.getPublicPath() + 'apps/' + name + '/' + pathname.replace(/^\//g, '');
+    }
+    return this.getPublicPath() + pathname.replace(/^\//g, '');
+  }
+
   getCollectionManager(dataSource?: string) {
     return this.dataSourceManager.getDataSource(dataSource)?.collectionManager;
   }
@@ -236,56 +306,95 @@ export class Application {
   }
 
   async load() {
-    let loadFailed = false;
-    this.ws.on('message', (event) => {
-      const data = JSON.parse(event.data);
-      console.log(data.payload);
-      if (data?.payload?.refresh) {
-        window.location.reload();
-        return;
-      }
-      if (data.type === 'notification') {
-        this.notification[data.payload?.type || 'info']({ message: data.payload?.message });
-        return;
-      }
-      const maintaining = data.type === 'maintaining' && data.payload.code !== 'APP_RUNNING';
-      if (maintaining) {
-        this.maintaining = true;
-        this.error = data.payload;
-      } else {
-        // console.log('loadFailed', loadFailed);
-        if (loadFailed) {
-          window.location.reload();
-          return;
-        }
-        this.maintaining = false;
-        this.maintained = true;
-        this.error = null;
-      }
-    });
-    this.ws.on('serverDown', () => {
-      this.maintaining = true;
-      this.maintained = false;
-    });
-    this.ws.connect();
     try {
       this.loading = true;
+      await this.loadWebSocket();
       await this.pm.load();
     } catch (error) {
+      this.hasLoadError = true;
       if (this.ws.enabled) {
         await new Promise((resolve) => {
           setTimeout(() => resolve(null), 1000);
         });
       }
-      loadFailed = true;
-      const others = error?.response?.data?.error || error?.response?.data?.errors?.[0] || { message: error?.message };
+      const toError = (error) => {
+        if (typeof error?.response?.data === 'string') {
+          const tempElement = document.createElement('div');
+          tempElement.innerHTML = error?.response?.data;
+          return { message: tempElement.textContent || tempElement.innerText };
+        }
+        if (error?.response?.data?.error) {
+          return error?.response?.data?.error;
+        }
+        if (error?.response?.data?.errors?.[0]) {
+          return error?.response?.data?.errors?.[0];
+        }
+        return { message: error?.message };
+      };
       this.error = {
         code: 'LOAD_ERROR',
-        ...others,
+        ...toError(error),
       };
       console.error(error, this.error);
     }
     this.loading = false;
+  }
+
+  async loadWebSocket() {
+    this.eventBus.addEventListener('ws:message:authorized', () => {
+      this.setWsAuthorized(true);
+    });
+
+    this.ws.on('message', (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data?.payload?.refresh) {
+        window.location.reload();
+        return;
+      }
+
+      if (data.type === 'notification') {
+        this.notification[data.payload?.type || 'info']({ message: data.payload?.message });
+        return;
+      }
+
+      const maintaining = data.type === 'maintaining' && data.payload.code !== 'APP_RUNNING';
+      if (maintaining) {
+        this.setMaintaining(true);
+        this.error = data.payload;
+      } else {
+        if (this.hasLoadError) {
+          window.location.reload();
+        }
+
+        this.setMaintaining(false);
+        this.maintained = true;
+        this.error = null;
+
+        const type = data.type;
+        if (!type) {
+          return;
+        }
+
+        const eventName = `ws:message:${type}`;
+        this.eventBus.dispatchEvent(new CustomEvent(eventName, { detail: data.payload }));
+      }
+    });
+
+    this.ws.on('serverDown', () => {
+      this.maintaining = true;
+      this.maintained = false;
+    });
+
+    this.ws.on('open', () => {
+      const token = this.apiClient.auth.token;
+
+      if (token) {
+        this.setTokenInWebSocket({ token, authenticator: this.apiClient.auth.getAuthenticator() });
+      }
+    });
+
+    this.ws.connect();
   }
 
   getComponent<T = any>(Component: ComponentTypeAndString<T>, isShowError = true): ComponentType<T> | undefined {
@@ -352,5 +461,16 @@ export class Application {
     const root = createRoot(container);
     root.render(<App />);
     return root;
+  }
+
+  addFieldInterfaces(fieldInterfaceClasses: CollectionFieldInterfaceFactory[] = []) {
+    return this.dataSourceManager.collectionFieldInterfaceManager.addFieldInterfaces(fieldInterfaceClasses);
+  }
+
+  addFieldInterfaceComponentOption(fieldName: string, componentOption: CollectionFieldInterfaceComponentOption) {
+    return this.dataSourceManager.collectionFieldInterfaceManager.addFieldInterfaceComponentOption(
+      fieldName,
+      componentOption,
+    );
   }
 }

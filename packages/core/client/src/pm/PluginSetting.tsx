@@ -10,12 +10,13 @@
 import { PageHeader } from '@ant-design/pro-layout';
 import { css } from '@emotion/css';
 import { Layout, Menu, Result } from 'antd';
-import _, { get } from 'lodash';
-import React, { createContext, useCallback, useMemo } from 'react';
+import _ from 'lodash';
+import React, { createContext, useCallback, useEffect, useMemo } from 'react';
 import { Navigate, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { useStyles } from './style';
 import { ADMIN_SETTINGS_PATH, PluginSettingsPageType, useApp } from '../application';
+import { useDocumentTitle } from '../document-title';
 import { useCompile } from '../schema-component';
+import { useStyles } from './style';
 
 export const SettingsCenterContext = createContext<any>({});
 SettingsCenterContext.displayName = 'SettingsCenterContext';
@@ -82,11 +83,24 @@ export const AdminSettingsLayout = () => {
     if (!settings || !settings.length) {
       return '/admin';
     }
-    const first = settings[0];
-    if (first.children?.length) {
-      return getFirstDeepChildPath(first.children);
+
+    if (settings.filter((item) => item.isTopLevel).length === 1) {
+      // 如果是外链类型的，需要跳转外链，如果是内页则返回内页 path
+      const pluginSetting = settings.find((item) => item.isTopLevel);
+      // 如果仅有 1 个，且是外链类型的，跳转到 /admin
+      // @see https://nocobase.height.app/inbox/T-5038
+      return pluginSetting.link ? '/admin' : pluginSetting.path;
     }
-    return first.path;
+
+    function find(settings: PluginSettingsPageType[]) {
+      const first = settings.find((item) => !item.link); // 找到第一个非外链类型的
+      if (first.children?.length) {
+        return getFirstDeepChildPath(first.children);
+      }
+      return first;
+    }
+
+    return find(settings).path;
   }, []);
 
   const settingsMapByPath = useMemo<Record<string, PluginSettingsPageType>>(() => {
@@ -102,6 +116,9 @@ export const AdminSettingsLayout = () => {
     traverse(settings);
     return map;
   }, [settings]);
+
+  const { setTitle: setDocumentTitle } = useDocumentTitle();
+
   const currentSetting = useMemo(
     () => matchRoute(settingsMapByPath, location.pathname),
     [location.pathname, settingsMapByPath],
@@ -112,6 +129,15 @@ export const AdminSettingsLayout = () => {
     }
     return settings.find((item) => item.name === currentSetting.topLevelName);
   }, [currentSetting, settings]);
+
+  useEffect(() => {
+    if (_.isString(currentTopLevelSetting?.title)) {
+      setDocumentTitle(currentTopLevelSetting?.title);
+    } else {
+      setDocumentTitle(currentTopLevelSetting?.topLevelName);
+    }
+  }, [currentTopLevelSetting?.title, currentTopLevelSetting?.topLevelName, setDocumentTitle]);
+
   const sidebarMenus = useMemo(() => {
     return getMenuItems(settings.filter((v) => v.isTopLevel !== false).map((item) => ({ ...item, children: null })));
   }, [settings]);
@@ -121,6 +147,12 @@ export const AdminSettingsLayout = () => {
   if (location.pathname === currentTopLevelSetting.path && currentTopLevelSetting.children?.length > 0) {
     return <Navigate replace to={getFirstDeepChildPath(currentTopLevelSetting.children)} />;
   }
+
+  // 如果是外链类型的，需要跳转并返回到上一个页面
+  if (currentSetting.link) {
+    return <Navigate replace to={currentSetting.link} />;
+  }
+
   return (
     <div>
       <Layout>
@@ -145,6 +177,12 @@ export const AdminSettingsLayout = () => {
             style={{ height: 'calc(100vh - 46px)', overflowY: 'auto', overflowX: 'hidden' }}
             onClick={({ key }) => {
               const plugin = settings.find((item) => item.name === key);
+
+              if (plugin.link) {
+                window.open(plugin.link, '_blank');
+                return;
+              }
+
               if (plugin.children?.length) {
                 return navigate(getFirstDeepChildPath(plugin.children));
               } else {
@@ -172,7 +210,10 @@ export const AdminSettingsLayout = () => {
                   <Menu
                     style={{ marginLeft: -theme.margin }}
                     onClick={({ key }) => {
-                      navigate(replaceRouteParams(app.pluginSettingsManager.getRoutePath(key), params));
+                      const targetPath = replaceRouteParams(app.pluginSettingsManager.getRoutePath(key), params);
+                      if (location.pathname !== targetPath) {
+                        navigate(targetPath);
+                      }
                     }}
                     selectedKeys={[currentSetting?.name]}
                     mode="horizontal"

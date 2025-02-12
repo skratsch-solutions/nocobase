@@ -9,7 +9,8 @@
 
 import { useFieldSchema } from '@formily/react';
 import { CompatibleSchemaInitializer } from '../../../../application/schema-initializer/CompatibleSchemaInitializer';
-import { useCollection_deprecated } from '../../../../collection-manager/hooks/useCollection_deprecated';
+import { useCollection, useDataBlockProps } from '../../../../data-source';
+import { useActionAvailable } from '../../useActionAvailable';
 
 const commonOptions = {
   title: "{{t('Configure actions')}}",
@@ -27,6 +28,7 @@ const commonOptions = {
         'x-align': 'left',
       },
     },
+
     {
       type: 'item',
       title: "{{t('Add new')}}",
@@ -39,9 +41,37 @@ const commonOptions = {
           skipScopeCheck: true,
         },
       },
+      useVisible: () => useActionAvailable('create'),
+    },
+    {
+      type: 'item',
+      title: '{{t("Associate")}}',
+      name: 'associate',
+      Component: 'AssociateActionInitializer',
       useVisible() {
-        const collection = useCollection_deprecated();
-        return !['view', 'file', 'sql'].includes(collection.template) || collection?.writableView;
+        const props = useDataBlockProps();
+        const collection = useCollection() || ({} as any);
+        const { unavailableActions, availableActions } = collection?.options || {};
+        if (availableActions) {
+          return !!props?.association && availableActions.includes?.('update');
+        }
+        if (unavailableActions) {
+          return !!props?.association && !unavailableActions?.includes?.('update');
+        }
+        return true;
+      },
+    },
+    {
+      type: 'item',
+      title: "{{t('Popup')}}",
+      name: 'popup',
+      Component: 'PopupActionInitializer',
+      componentProps: {
+        'x-component': 'Action',
+        'x-initializer': 'page:addBlock',
+      },
+      schema: {
+        'x-align': 'right',
       },
     },
     {
@@ -53,10 +83,7 @@ const commonOptions = {
         'x-align': 'right',
         'x-decorator': 'ACLActionProvider',
       },
-      useVisible() {
-        const collection = useCollection_deprecated();
-        return !['view', 'sql'].includes(collection.template) || collection?.writableView;
-      },
+      useVisible: () => useActionAvailable('destroyMany'),
     },
     {
       type: 'item',
@@ -90,9 +117,17 @@ const commonOptions = {
       },
       useVisible() {
         const schema = useFieldSchema();
-        const collection = useCollection_deprecated();
+        const collection = useCollection();
         const { treeTable } = schema?.parent?.['x-decorator-props'] || {};
         return collection.tree && treeTable;
+      },
+    },
+    {
+      name: 'customRequest',
+      title: '{{t("Custom request")}}',
+      Component: 'CustomRequestInitializer',
+      schema: {
+        'x-action': 'customize:table:request:global',
       },
     },
   ],

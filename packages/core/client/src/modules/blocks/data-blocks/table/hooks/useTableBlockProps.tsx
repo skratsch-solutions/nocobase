@@ -10,85 +10,110 @@
 import { ArrayField } from '@formily/core';
 import { useField, useFieldSchema } from '@formily/react';
 import { isEqual } from 'lodash';
-import { useCallback, useEffect, useMemo } from 'react';
-import { useTableBlockContext } from '../../../../../block-provider/TableBlockProvider';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useTableBlockContextBasicValue } from '../../../../../block-provider/TableBlockProvider';
 import { findFilterTargets } from '../../../../../block-provider/hooks';
-import { useFilterBlock } from '../../../../../filter-provider/FilterProvider';
+import { useDataBlockRequest } from '../../../../../data-source/data-block/DataBlockRequestProvider';
+import { useDataBlockResource } from '../../../../../data-source/data-block/DataBlockResourceProvider';
+import { DataBlock, useFilterBlock } from '../../../../../filter-provider/FilterProvider';
 import { mergeFilter } from '../../../../../filter-provider/utils';
 import { removeNullCondition } from '../../../../../schema-component';
+import { useTableElementRef } from '../../../../../schema-component/antd/table-v2/Table';
 
 export const useTableBlockProps = () => {
   const field = useField<ArrayField>();
   const fieldSchema = useFieldSchema();
-  const ctx = useTableBlockContext();
-  const globalSort = fieldSchema.parent?.['x-decorator-props']?.['params']?.['sort'];
+  const resource = useDataBlockResource();
+  const service = useDataBlockRequest() as any;
   const { getDataBlocks } = useFilterBlock();
-  const isLoading = ctx?.service?.loading;
-  const params = useMemo(() => ctx?.service?.params, [JSON.stringify(ctx?.service?.params)]);
+  const tableBlockContextBasicValue = useTableBlockContextBasicValue();
+
+  const ctxRef = useRef(null);
+  ctxRef.current = { service, resource };
+  const meta = service?.data?.meta || {};
+  const tableElementRef = useTableElementRef();
+  const onPaginationChange = useCallback(() => {
+    if (tableElementRef?.current) {
+      tableElementRef.current.parentElement?.scrollIntoView({ block: 'start' });
+    }
+  }, [tableElementRef]);
+  const pagination = useMemo(
+    () => ({
+      pageSize: meta?.pageSize,
+      total: meta?.count,
+      current: meta?.page,
+      onChange: onPaginationChange,
+    }),
+    [meta?.count, meta?.page, meta?.pageSize, onPaginationChange],
+  );
+
+  const data = service?.data?.data || [];
 
   useEffect(() => {
-    if (!isLoading) {
-      const serviceResponse = ctx?.service?.data;
-      const data = serviceResponse?.data || [];
-      const meta = serviceResponse?.meta || {};
-      const selectedRowKeys = ctx?.field?.data?.selectedRowKeys;
+    if (!service?.loading) {
+      const selectedRowKeys = tableBlockContextBasicValue.field?.data?.selectedRowKeys;
 
-      if (!isEqual(field.value, data)) {
-        field.value = data;
-        field?.setInitialValue(data);
-      }
+      // if (!isEqual(field.value, data)) {
+      //   field.value = data;
+      //   field?.setInitialValue(data);
+      // }
       field.data = field.data || {};
 
       if (!isEqual(field.data.selectedRowKeys, selectedRowKeys)) {
         field.data.selectedRowKeys = selectedRowKeys;
       }
-
-      field.componentProps.pagination = field.componentProps.pagination || {};
-      field.componentProps.pagination.pageSize = meta?.pageSize;
-      field.componentProps.pagination.total = meta?.count;
-      field.componentProps.pagination.current = meta?.page;
     }
-  }, [field, ctx?.service?.data, isLoading, ctx?.field?.data?.selectedRowKeys]);
+  }, [field, service?.data, service?.loading, tableBlockContextBasicValue.field?.data?.selectedRowKeys]);
 
   return {
-    bordered: ctx.bordered,
-    childrenColumnName: ctx.childrenColumnName,
-    loading: ctx?.service?.loading,
-    showIndex: ctx.showIndex,
-    dragSort: ctx.dragSort && ctx.dragSortBy,
-    rowKey: ctx.rowKey || 'id',
-    pagination: fieldSchema?.['x-component-props']?.pagination === false ? false : field.componentProps.pagination,
-    onRowSelectionChange: useCallback((selectedRowKeys) => {
-      ctx.field.data = ctx?.field?.data || {};
-      ctx.field.data.selectedRowKeys = selectedRowKeys;
-      ctx?.field?.onRowSelect?.(selectedRowKeys);
+    value: data,
+    childrenColumnName: tableBlockContextBasicValue.childrenColumnName,
+    loading: service?.loading,
+    showIndex: tableBlockContextBasicValue.showIndex,
+    dragSort: tableBlockContextBasicValue.dragSort && tableBlockContextBasicValue.dragSortBy,
+    rowKey: tableBlockContextBasicValue.rowKey || fieldSchema?.['x-component-props']?.rowKey || 'id',
+    pagination: fieldSchema?.['x-component-props']?.pagination === false ? false : pagination,
+    onRowSelectionChange: useCallback((selectedRowKeys, selectedRowData) => {
+      if (tableBlockContextBasicValue) {
+        tableBlockContextBasicValue.field.data = tableBlockContextBasicValue.field?.data || {};
+        tableBlockContextBasicValue.field.data.selectedRowKeys = selectedRowKeys;
+        tableBlockContextBasicValue.field.data.selectedRowData = selectedRowData;
+        tableBlockContextBasicValue.field?.onRowSelect?.(selectedRowKeys);
+      }
     }, []),
     onRowDragEnd: useCallback(
       async ({ from, to }) => {
-        await ctx.resource.move({
-          sourceId: from[ctx.rowKey || 'id'],
-          targetId: to[ctx.rowKey || 'id'],
-          sortField: ctx.dragSort && ctx.dragSortBy,
+        await ctxRef.current.resource.move({
+          sourceId: from[tableBlockContextBasicValue.rowKey || 'id'],
+          targetId: to[tableBlockContextBasicValue.rowKey || 'id'],
+          sortField: tableBlockContextBasicValue.dragSort && tableBlockContextBasicValue.dragSortBy,
         });
-        ctx.service.refresh();
+        ctxRef.current.service.refresh();
         // ctx.resource
         // eslint-disable-next-line react-hooks/exhaustive-deps
       },
-      [ctx.rowKey, ctx.dragSort, ctx.dragSortBy],
+      [
+        tableBlockContextBasicValue.rowKey,
+        tableBlockContextBasicValue.dragSort,
+        tableBlockContextBasicValue.dragSortBy,
+      ],
     ),
     onChange: useCallback(
       ({ current, pageSize }, filters, sorter) => {
-        const sort = !ctx.dragSort
-          ? sorter.order
-            ? sorter.order === `ascend`
-              ? [sorter.field]
-              : [`-${sorter.field}`]
-            : globalSort || ctx.dragSortBy
-          : ctx.dragSortBy;
+        const globalSort = fieldSchema.parent?.['x-decorator-props']?.['params']?.['sort'];
+        const sort = sorter.order
+          ? sorter.order === `ascend`
+            ? [sorter.field]
+            : [`-${sorter.field}`]
+          : globalSort || tableBlockContextBasicValue.dragSortBy;
         const currentPageSize = pageSize || fieldSchema.parent?.['x-decorator-props']?.['params']?.pageSize;
-        ctx.service.run({ ...params?.[0], page: current || 1, pageSize: currentPageSize, sort });
+        const args = { ...ctxRef.current?.service?.params?.[0], page: current || 1, pageSize: currentPageSize };
+        if (sort) {
+          args['sort'] = sort;
+        }
+        ctxRef.current?.service.run(args);
       },
-      [globalSort, params],
+      [fieldSchema.parent],
     ),
     onClickRow: useCallback(
       (record, setSelectedRow, selectedRow) => {
@@ -103,17 +128,18 @@ export const useTableBlockProps = () => {
           return;
         }
 
-        const value = [record[ctx.rowKey]];
+        const currentBlock = dataBlocks.find((block) => block.uid === fieldSchema.parent['x-uid']);
 
         dataBlocks.forEach((block) => {
           const target = targets.find((target) => target.uid === block.uid);
           if (!target) return;
-
+          const sourceKey = getSourceKey(currentBlock, target.field) || tableBlockContextBasicValue.rowKey || 'id';
+          const value = [record[sourceKey]];
           const param = block.service.params?.[0] || {};
           // 保留原有的 filter
           const storedFilter = block.service.params?.[1]?.filters || {};
 
-          if (selectedRow.includes(record[ctx.rowKey])) {
+          if (selectedRow.includes(record[tableBlockContextBasicValue.rowKey])) {
             if (block.dataLoadingMode === 'manual') {
               return block.clearData();
             }
@@ -122,7 +148,7 @@ export const useTableBlockProps = () => {
             storedFilter[uid] = {
               $and: [
                 {
-                  [target.field || ctx.rowKey]: {
+                  [target.field || tableBlockContextBasicValue.rowKey]: {
                     [target.field ? '$in' : '$eq']: value,
                   },
                 },
@@ -146,12 +172,21 @@ export const useTableBlockProps = () => {
         });
 
         // 更新表格的选中状态
-        setSelectedRow((prev) => (prev?.includes(record[ctx.rowKey]) ? [] : [...value]));
+        setSelectedRow((prev) =>
+          prev?.includes(record[tableBlockContextBasicValue.rowKey])
+            ? []
+            : [record[tableBlockContextBasicValue.rowKey]],
+        );
       },
-      [ctx.rowKey, fieldSchema, getDataBlocks],
+      [tableBlockContextBasicValue.rowKey, fieldSchema, getDataBlocks],
     ),
     onExpand: useCallback((expanded, record) => {
-      ctx?.field.onExpandClick?.(expanded, record);
+      tableBlockContextBasicValue.field.onExpandClick?.(expanded, record);
     }, []),
   };
 };
+
+function getSourceKey(currentBlock: DataBlock, field: string) {
+  const associationField = currentBlock?.associatedFields?.find((item) => item.foreignKey === field);
+  return associationField?.sourceKey || field?.split?.('.')?.[1];
+}

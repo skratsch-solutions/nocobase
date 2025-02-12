@@ -71,7 +71,7 @@ test.describe('field data entry', () => {
     const triggerNodeObj = JSON.parse(JSON.stringify(triggerNode));
     //配置Manual节点
     await page.goto(`admin/workflow/workflows/${workflowId}`);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
     const collectionTriggerNode = new CollectionTriggerNode(page, workFlowName, triggerNodeCollectionName);
     await collectionTriggerNode.addNodeButton.click();
     await page.getByRole('button', { name: 'manual', exact: true }).click();
@@ -114,7 +114,7 @@ test.describe('field data entry', () => {
     await page.mouse.move(300, 0, { steps: 100 });
     await page.mouse.click(300, 0);
     await manualNode.submitButton.click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
 
     // 2、测试步骤：添加数据触发工作流
     const triggerNodeCollectionRecordOne =
@@ -131,16 +131,12 @@ test.describe('field data entry', () => {
 
     const newPage = mockPage();
     await newPage.goto();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
     await page.getByLabel('schema-initializer-Grid-page:addBlock').hover();
     await page.getByRole('menuitem', { name: 'check-square Workflow todos' }).click();
     await page.mouse.move(300, 0, { steps: 100 });
     await page.waitForTimeout(300);
-    await page
-      .locator(`//td[span[text()="${manualNodeName}"]]`)
-      .locator('xpath=preceding-sibling::td[1]')
-      .locator('text=View')
-      .click();
+    await page.locator('tr', { hasText: manualNodeName }).getByLabel('action-Action.Link-View-view-').click();
     const manualNodeRecord = faker.internet.email();
     await page.getByRole('textbox').fill(manualNodeRecord);
     await page.getByRole('button', { name: 'Continue the process' }).click();
@@ -214,7 +210,7 @@ test.describe('field data entry', () => {
     const triggerNodeObj = JSON.parse(JSON.stringify(triggerNode));
     //配置Manual节点
     await page.goto(`admin/workflow/workflows/${workflowId}`);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
     const collectionTriggerNode = new CollectionTriggerNode(page, workFlowName, triggerNodeCollectionName);
     await collectionTriggerNode.addNodeButton.click();
     await page.getByRole('button', { name: 'manual', exact: true }).click();
@@ -257,7 +253,7 @@ test.describe('field data entry', () => {
     await page.mouse.move(300, 0, { steps: 100 });
     await page.mouse.click(300, 0);
     await manualNode.submitButton.click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
 
     // 2、测试步骤：添加数据触发工作流
     const triggerNodeCollectionRecordOne =
@@ -274,16 +270,12 @@ test.describe('field data entry', () => {
 
     const newPage = mockPage();
     await newPage.goto();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
     await page.getByLabel('schema-initializer-Grid-page:addBlock').hover();
     await page.getByRole('menuitem', { name: 'check-square Workflow todos' }).click();
     await page.mouse.move(300, 0, { steps: 100 });
     await page.waitForTimeout(300);
-    await page
-      .locator(`//td[span[text()="${manualNodeName}"]]`)
-      .locator('xpath=preceding-sibling::td[1]')
-      .locator('text=View')
-      .click();
+    await page.locator('tr', { hasText: manualNodeName }).getByLabel('action-Action.Link-View-view-').click();
     const manualNodeRecord = faker.number.int();
     await page.getByRole('spinbutton').fill(manualNodeRecord.toString());
     await page.getByRole('button', { name: 'Continue the process' }).click();
@@ -357,7 +349,7 @@ test.describe('field data entry', () => {
     const triggerNodeObj = JSON.parse(JSON.stringify(triggerNode));
     //配置Manual节点
     await page.goto(`admin/workflow/workflows/${workflowId}`);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
     const collectionTriggerNode = new CollectionTriggerNode(page, workFlowName, triggerNodeCollectionName);
     await collectionTriggerNode.addNodeButton.click();
     await page.getByRole('button', { name: 'manual', exact: true }).click();
@@ -400,7 +392,7 @@ test.describe('field data entry', () => {
     await page.mouse.move(300, 0, { steps: 100 });
     await page.mouse.click(300, 0);
     await manualNode.submitButton.click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
 
     // 2、测试步骤：添加数据触发工作流
     const triggerNodeCollectionRecordOne =
@@ -417,16 +409,12 @@ test.describe('field data entry', () => {
 
     const newPage = mockPage();
     await newPage.goto();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
     await page.getByLabel('schema-initializer-Grid-page:addBlock').hover();
     await page.getByRole('menuitem', { name: 'check-square Workflow todos' }).click();
     await page.mouse.move(300, 0, { steps: 100 });
     await page.waitForTimeout(300);
-    await page
-      .locator(`//td[span[text()="${manualNodeName}"]]`)
-      .locator('xpath=preceding-sibling::td[1]')
-      .locator('text=View')
-      .click();
+    await page.locator('tr', { hasText: manualNodeName }).getByLabel('action-Action.Link-View-view-').click();
     const manualNodeRecord = faker.number.float();
     await page.getByRole('spinbutton').fill(manualNodeRecord.toString());
     await page.getByRole('button', { name: 'Continue the process' }).click();

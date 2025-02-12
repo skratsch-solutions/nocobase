@@ -8,12 +8,16 @@
  */
 
 import { css, cx } from '@emotion/css';
-import { RecursionField, observer, useField, useFieldSchema } from '@formily/react';
+import { observer, useField, useFieldSchema } from '@formily/react';
 import {
   ActionContextProvider,
   CollectionProvider_deprecated,
   FormBlockContext,
+  NocoBaseRecursionField,
+  PopupSettingsProvider,
   RecordProvider,
+  RefreshComponentProvider,
+  TabsContextProvider,
   fetchTemplateData,
   useACLActionParamsContext,
   useAPIClient,
@@ -25,8 +29,12 @@ import {
   useDesignable,
   useFormBlockContext,
   useRecord,
+  useCollection,
+  useDataSourceHeaders,
+  useDataSourceKey,
 } from '@nocobase/client';
 import { App, Button } from 'antd';
+import _ from 'lodash';
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -85,6 +93,7 @@ export const DuplicateAction = observer(
     const { duplicateFields, duplicateMode = 'quickDulicate', duplicateCollection } = fieldSchema['x-component-props'];
     const record = useRecord();
     const parentRecordData: any = useCollectionParentRecordData();
+    const collection = useCollection();
     const { id, __collection } = record;
     const ctx = useActionContext();
     const { name } = useCollection_deprecated();
@@ -93,6 +102,16 @@ export const DuplicateAction = observer(
     const collectionFields = getCollectionFields(__collection || name);
     const formctx = useFormBlockContext();
     const aclCtx = useACLActionParamsContext();
+    const dataSource = useDataSourceKey();
+    const headers = useDataSourceHeaders(dataSource);
+    const dataId = Array.isArray(collection.filterTargetKey)
+      ? Object.assign(
+          {},
+          ...collection.filterTargetKey.map((v) => {
+            return { [v]: record[v] };
+          }),
+        )
+      : record[collection.filterTargetKey] || id;
     const buttonStyle = useMemo(() => {
       return {
         opacity: designable && (field?.data?.hidden || !aclCtx) && 0.1,
@@ -100,7 +119,7 @@ export const DuplicateAction = observer(
     }, [designable, field?.data?.hidden]);
     const template = {
       key: 'duplicate',
-      dataId: id,
+      dataId,
       default: true,
       fields:
         duplicateFields?.filter((v) => {
@@ -112,7 +131,7 @@ export const DuplicateAction = observer(
     const handelQuickDuplicate = async () => {
       setLoading(true);
       try {
-        const data = await fetchTemplateData(api, template, t);
+        const data = await fetchTemplateData(api, template, headers);
         await resource['create']({
           values: {
             ...data,
@@ -199,14 +218,21 @@ export const DuplicateAction = observer(
                 {loading ? t('Duplicating') : children || t('Duplicate')}
               </Button>
             )}
-            <CollectionProvider_deprecated name={duplicateCollection || name}>
-              {/* 这里的 record 就是弹窗中创建表单的 sourceRecord */}
-              <RecordProvider record={{ ...parentRecordData, __collection: duplicateCollection || __collection }}>
-                <ActionContextProvider value={{ ...ctx, visible, setVisible }}>
-                  <RecursionField schema={fieldSchema} basePath={field.address} onlyRenderProperties />
-                </ActionContextProvider>
-              </RecordProvider>
-            </CollectionProvider_deprecated>
+            {/* Clear the context of Tabs to avoid affecting the Tabs of the upper-level popup */}
+            <TabsContextProvider>
+              <CollectionProvider_deprecated name={duplicateCollection || name}>
+                {/* 这里的 record 就是弹窗中创建表单的 sourceRecord */}
+                <RecordProvider record={{ ...parentRecordData, __collection: duplicateCollection || __collection }}>
+                  <ActionContextProvider value={{ ...ctx, visible, setVisible }}>
+                    <PopupSettingsProvider enableURL={false}>
+                      <RefreshComponentProvider refresh={_.noop}>
+                        <NocoBaseRecursionField schema={fieldSchema} basePath={field.address} onlyRenderProperties />
+                      </RefreshComponentProvider>
+                    </PopupSettingsProvider>
+                  </ActionContextProvider>
+                </RecordProvider>
+              </CollectionProvider_deprecated>
+            </TabsContextProvider>
           </div>
         </FormBlockContext.Provider>
       </div>

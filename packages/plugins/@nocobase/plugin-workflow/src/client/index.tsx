@@ -11,12 +11,17 @@ import React from 'react';
 import { useFieldSchema } from '@formily/react';
 import { isValid } from '@formily/shared';
 
-import { Plugin, WorkflowConfig } from '@nocobase/client';
+import { Plugin, useCompile, WorkflowConfig } from '@nocobase/client';
 import { Registry } from '@nocobase/utils/client';
 
-import { ExecutionPage } from './ExecutionPage';
-import { WorkflowPage } from './WorkflowPage';
-import { WorkflowPane } from './WorkflowPane';
+// import { ExecutionPage } from './ExecutionPage';
+// import { WorkflowPage } from './WorkflowPage';
+// import { WorkflowPane } from './WorkflowPane';
+import { lazy } from '@nocobase/client';
+const { ExecutionPage } = lazy(() => import('./ExecutionPage'), 'ExecutionPage');
+const { WorkflowPage } = lazy(() => import('./WorkflowPage'), 'WorkflowPage');
+const { WorkflowPane } = lazy(() => import('./WorkflowPane'), 'WorkflowPane');
+
 import { Trigger } from './triggers';
 import CollectionTrigger from './triggers/collection';
 import ScheduleTrigger from './triggers/schedule';
@@ -29,19 +34,25 @@ import CreateInstruction from './nodes/create';
 import UpdateInstruction from './nodes/update';
 import DestroyInstruction from './nodes/destroy';
 import { getWorkflowDetailPath, getWorkflowExecutionsPath } from './utils';
-import { NAMESPACE } from './locale';
+import { lang, NAMESPACE } from './locale';
 import { customizeSubmitToWorkflowActionSettings } from './settings/customizeSubmitToWorkflowActionSettings';
+import { VariableOption } from './variable';
 
 export default class PluginWorkflowClient extends Plugin {
   triggers = new Registry<Trigger>();
   instructions = new Registry<Instruction>();
-  getTriggersOptions = () => {
-    return Array.from(this.triggers.getEntities()).map(([value, { title, ...options }]) => ({
-      value,
-      label: title,
-      color: 'gold',
-      options,
-    }));
+  systemVariables = new Registry<VariableOption>();
+
+  useTriggersOptions = () => {
+    const compile = useCompile();
+    return Array.from(this.triggers.getEntities())
+      .map(([value, { title, ...options }]) => ({
+        value,
+        label: compile(title),
+        color: 'gold',
+        options,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
   };
 
   isWorkflowSync(workflow) {
@@ -68,6 +79,10 @@ export default class PluginWorkflowClient extends Plugin {
     }
   }
 
+  registerSystemVariable(option: VariableOption) {
+    this.systemVariables.register(option.key, option);
+  }
+
   async load() {
     this.app.router.add('admin.workflow.workflows.id', {
       path: getWorkflowDetailPath(':id'),
@@ -77,11 +92,6 @@ export default class PluginWorkflowClient extends Plugin {
     this.app.router.add('admin.workflow.executions.id', {
       path: getWorkflowExecutionsPath(':id'),
       element: <ExecutionPage />,
-    });
-
-    this.app.addComponents({
-      WorkflowPage,
-      ExecutionPage,
     });
 
     this.app.pluginSettingsManager.add(NAMESPACE, {
@@ -112,6 +122,12 @@ export default class PluginWorkflowClient extends Plugin {
     this.registerInstruction('create', CreateInstruction);
     this.registerInstruction('update', UpdateInstruction);
     this.registerInstruction('destroy', DestroyInstruction);
+
+    this.registerSystemVariable({
+      key: 'now',
+      label: `{{t("System time", { ns: "${NAMESPACE}" })}}`,
+      value: 'now',
+    });
   }
 }
 

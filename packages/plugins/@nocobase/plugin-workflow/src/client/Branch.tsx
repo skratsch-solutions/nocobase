@@ -12,7 +12,7 @@ import { CloseOutlined } from '@ant-design/icons';
 
 import { css, cx } from '@nocobase/client';
 
-import { AddButton } from './AddButton';
+import { AddButton } from './AddNodeContext';
 import { useGetAriaLabelOfAddButton } from './hooks/useGetAriaLabelOfAddButton';
 import { Node } from './nodes';
 import useStyles from './style';
@@ -43,8 +43,8 @@ export function Branch({
     <div className={cx('workflow-branch', styles.branchClass, className)}>
       <div className="workflow-branch-lines" />
       {controller}
-      <AddButton aria-label={getAriaLabel()} upstream={from} branchIndex={branchIndex} />
       <div className="workflow-node-list">
+        <AddButton aria-label={getAriaLabel()} upstream={from} branchIndex={branchIndex} />
         {list.map((item) => (
           <Node data={item} key={item.id} />
         ))}

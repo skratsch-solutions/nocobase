@@ -146,286 +146,52 @@ describe('list action', () => {
     expect(response.status).toEqual(200);
     expect(response.body.count).toEqual(0);
   });
-});
 
-describe('list-tree', () => {
-  let app;
-  beforeEach(async () => {
-    app = actionMockServer();
-    registerActions(app);
-  });
+  it('should list with simple paginate', async () => {
+    const Item = app.collection({
+      name: 'items',
+      simplePaginate: true,
+      fields: [{ type: 'string', name: 'name' }],
+    });
 
-  afterEach(async () => {
-    await app.destroy();
-  });
+    await app.db.sync();
 
-  it('should be tree', async () => {
-    const values = [
-      {
-        name: '1',
-        __index: '0',
-        children: [
-          {
-            name: '1-1',
-            __index: '0.children.0',
-            children: [
-              {
-                name: '1-1-1',
-                __index: '0.children.0.children.0',
-                children: [
-                  {
-                    name: '1-1-1-1',
-                    __index: '0.children.0.children.0.children.0',
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-      {
-        name: '2',
-        __index: '1',
-        children: [
-          {
-            name: '2-1',
-            __index: '1.children.0',
-            children: [
-              {
-                name: '2-1-1',
-                __index: '1.children.0.children.0',
-                children: [
-                  {
-                    name: '2-1-1-1',
-                    __index: '1.children.0.children.0.children.0',
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    ];
-
-    const db = app.db;
-    const collection = db.collection({
-      name: 'categories',
-      tree: 'adjacency-list',
-      fields: [
+    await Item.repository.create({
+      values: [
         {
-          type: 'string',
-          name: 'name',
+          name: 'item1',
         },
         {
-          type: 'string',
-          name: 'description',
+          name: 'item2',
         },
         {
-          type: 'belongsTo',
-          name: 'parent',
-          treeParent: true,
-        },
-        {
-          type: 'hasMany',
-          name: 'children',
-          treeChildren: true,
+          name: 'item3',
         },
       ],
-    });
-    await db.sync();
-
-    await db.getRepository('categories').create({
-      values,
     });
 
     const response = await app
       .agent()
-      .resource('categories')
+      .resource('items')
       .list({
-        tree: true,
-        fields: ['id', 'name'],
-        sort: ['id'],
+        fields: ['id'],
+        pageSize: 1,
+        page: 2,
       });
 
-    expect(response.status).toEqual(200);
-    expect(response.body.rows).toMatchObject(values);
-  });
+    const body = response.body;
+    expect(body.hasNext).toBeTruthy();
 
-  it('should be tree', async () => {
-    const values = [
-      {
-        name: '1',
-        __index: '0',
-        children2: [
-          {
-            name: '1-1',
-            __index: '0.children2.0',
-            children2: [
-              {
-                name: '1-1-1',
-                __index: '0.children2.0.children2.0',
-                children2: [
-                  {
-                    name: '1-1-1-1',
-                    __index: '0.children2.0.children2.0.children2.0',
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-      {
-        name: '2',
-        __index: '1',
-        children2: [
-          {
-            name: '2-1',
-            __index: '1.children2.0',
-            children2: [
-              {
-                name: '2-1-1',
-                __index: '1.children2.0.children2.0',
-                children2: [
-                  {
-                    name: '2-1-1-1',
-                    __index: '1.children2.0.children2.0.children2.0',
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    ];
-
-    const db = app.db;
-    const collection = db.collection({
-      name: 'categories',
-      tree: 'adjacency-list',
-      fields: [
-        {
-          type: 'string',
-          name: 'name',
-        },
-        {
-          type: 'string',
-          name: 'description',
-        },
-        {
-          type: 'belongsTo',
-          name: 'parent',
-          foreignKey: 'cid',
-          treeParent: true,
-        },
-        {
-          type: 'hasMany',
-          name: 'children2',
-          foreignKey: 'cid',
-          treeChildren: true,
-        },
-      ],
-    });
-    await db.sync();
-
-    await db.getRepository('categories').create({
-      values,
-    });
-
-    const response = await app
+    const lastPageResponse = await app
       .agent()
-      .resource('categories')
+      .resource('items')
       .list({
-        tree: true,
-        fields: ['id', 'name'],
-        sort: ['id'],
+        fields: ['id'],
+        pageSize: 1,
+        page: 3,
       });
 
-    expect(response.status).toEqual(200);
-    expect(response.body.rows).toMatchObject(values);
-  });
-
-  it('should filter child nodes for tree', async () => {
-    const values = [
-      {
-        name: 'A1',
-        __index: '0',
-        children3: [
-          {
-            name: 'B',
-            __index: '0.children3.0',
-            children3: [
-              {
-                name: 'C',
-                __index: '0.children3.0.children3.0',
-              },
-            ],
-          },
-        ],
-      },
-      {
-        name: 'A2',
-        __index: '1',
-        children3: [
-          {
-            name: 'B',
-            __index: '1.children3.0',
-          },
-        ],
-      },
-    ];
-
-    const db = app.db;
-    db.collection({
-      name: 'categories',
-      tree: 'adjacency-list',
-      fields: [
-        {
-          type: 'string',
-          name: 'name',
-        },
-        {
-          type: 'string',
-          name: 'description',
-        },
-        {
-          type: 'belongsTo',
-          name: 'parent',
-          foreignKey: 'cid',
-          treeParent: true,
-        },
-        {
-          type: 'hasMany',
-          name: 'children3',
-          foreignKey: 'cid',
-          treeChildren: true,
-        },
-      ],
-    });
-    await db.sync();
-
-    await db.getRepository('categories').create({
-      values,
-    });
-
-    const response = await app
-      .agent()
-      .resource('categories')
-      .list({
-        tree: true,
-        fields: ['id', 'name'],
-        appends: ['parent'],
-        filter: {
-          name: 'B',
-        },
-      });
-
-    expect(response.status).toEqual(200);
-    const rows = response.body.rows;
-    expect(rows.length).toEqual(2);
-    expect(rows[0].name).toEqual('B');
-    expect(rows[1].name).toEqual('B');
-    expect(rows[0].parent.name).toEqual('A1');
-    expect(rows[1].parent.name).toEqual('A2');
+    const lastPageBody = lastPageResponse.body;
+    expect(lastPageBody.hasNext).toBeFalsy();
   });
 });

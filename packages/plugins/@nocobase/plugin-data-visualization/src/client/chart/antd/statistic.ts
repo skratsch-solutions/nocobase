@@ -8,19 +8,20 @@
  */
 
 import { AntdChart } from './antd';
-import { Statistic as AntdStatistic } from 'antd';
 import { lang } from '../../locale';
 import { ChartType, RenderProps } from '../chart';
+import { Statistic as C } from './components/Statistic';
 
 export class Statistic extends AntdChart {
   constructor() {
     super({
       name: 'statistic',
       title: 'Statistic',
-      Component: AntdStatistic,
+      enableAdvancedConfig: true,
+      Component: C,
       config: [
         {
-          property: 'field',
+          configType: 'field',
           name: 'field',
           title: 'Field',
           required: true,
@@ -28,6 +29,14 @@ export class Statistic extends AntdChart {
         {
           title: {
             title: lang('Title'),
+            type: 'string',
+            'x-decorator': 'FormItem',
+            'x-component': 'Input',
+          },
+        },
+        {
+          link: {
+            title: lang('Link'),
             type: 'string',
             'x-decorator': 'FormItem',
             'x-component': 'Input',

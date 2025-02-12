@@ -55,7 +55,7 @@ const useParseDataScopeFilter = ({ exclude = defaultExclude }: Props = {}) => {
           if (exclude.includes(getVariableName(value))) {
             return value;
           }
-          const result = variables?.parseVariable(value, localVariables);
+          const result = variables?.parseVariable(value, localVariables).then(({ value }) => value);
           return result;
         },
       });
@@ -71,6 +71,7 @@ const useParseDataScopeFilter = ({ exclude = defaultExclude }: Props = {}) => {
       const result = unflatten(flat);
       return result;
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [exclude, localVariables, variables?.parseVariable],
   );
 

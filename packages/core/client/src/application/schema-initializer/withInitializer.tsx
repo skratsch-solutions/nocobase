@@ -12,15 +12,16 @@ import { ConfigProvider, Popover, theme } from 'antd';
 import React, { ComponentType, useCallback, useMemo, useState } from 'react';
 
 import { css } from '@emotion/css';
+import { ErrorBoundary } from 'react-error-boundary';
 import { useNiceDropdownMaxHeight } from '../../common/useNiceDropdownHeight';
 import { useFlag } from '../../flag-provider';
 import { ErrorFallback, useDesignable } from '../../schema-component';
 import { useSchemaInitializerStyles } from './components/style';
 import { SchemaInitializerContext } from './context';
 import { SchemaInitializerOptions } from './types';
-import { ErrorBoundary } from 'react-error-boundary';
 
 const defaultWrap = (s: ISchema) => s;
+const useWrapDefault = (wrap = defaultWrap) => wrap;
 
 export function withInitializer<T>(C: ComponentType<T>) {
   const WithInitializer = observer(
@@ -30,6 +31,7 @@ export function withInitializer<T>(C: ComponentType<T>) {
       const {
         insert,
         useInsert,
+        useWrap = useWrapDefault,
         wrap = defaultWrap,
         insertPosition = 'beforeEnd',
         onSuccess,
@@ -43,15 +45,16 @@ export function withInitializer<T>(C: ComponentType<T>) {
 
       // 插入 schema 的能力
       const insertCallback = useInsert ? useInsert() : insert;
+      const wrapCallback = useWrap(wrap);
       const insertSchema = useCallback(
         (schema) => {
           if (insertCallback) {
-            insertCallback(wrap(schema, { isInSubTable }));
+            insertCallback(wrapCallback(schema, { isInSubTable }));
           } else {
-            insertAdjacent(insertPosition, wrap(schema, { isInSubTable }), { onSuccess });
+            insertAdjacent(insertPosition, wrapCallback(schema, { isInSubTable }), { onSuccess });
           }
         },
-        [insertCallback, wrap, insertAdjacent, insertPosition, onSuccess],
+        [insertCallback, wrapCallback, isInSubTable, insertAdjacent, insertPosition, onSuccess],
       );
 
       const { wrapSSR, hashId, componentCls } = useSchemaInitializerStyles();
@@ -82,13 +85,21 @@ export function withInitializer<T>(C: ComponentType<T>) {
         `;
       }, [token.paddingXXS]);
 
+      const contentStyle: any = useMemo(
+        () => ({
+          maxHeight: dropdownMaxHeight,
+          overflowY: 'auto',
+        }),
+        [dropdownMaxHeight],
+      );
+
       // designable 为 false 时，不渲染
       if (!designable && propsDesignable !== true) {
         return null;
       }
 
       return (
-        <ErrorBoundary FallbackComponent={ErrorFallback.Modal} onError={(err) => console.error(err)}>
+        <ErrorBoundary FallbackComponent={ErrorFallback.Modal} onError={console.error}>
           <SchemaInitializerContext.Provider
             value={{
               visible,
@@ -108,13 +119,7 @@ export function withInitializer<T>(C: ComponentType<T>) {
                 open={visible}
                 onOpenChange={setVisible}
                 content={wrapSSR(
-                  <div
-                    className={`${componentCls} ${hashId}`}
-                    style={{
-                      maxHeight: dropdownMaxHeight,
-                      overflowY: 'auto',
-                    }}
-                  >
+                  <div className={`${componentCls} ${hashId}`} style={contentStyle}>
                     <ConfigProvider
                       theme={{
                         components: {

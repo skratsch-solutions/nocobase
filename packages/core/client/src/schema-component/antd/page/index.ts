@@ -7,8 +7,10 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
+export { BackButtonUsedInSubPage, useBackButton } from './BackButtonUsedInSubPage';
 export * from './Page';
-export * from './FixedBlock';
-export * from './PageTab.Settings';
 export * from './Page.Settings';
-export * from './FixedBlockDesignerItem';
+export { PagePopups, useCurrentPopupContext } from './PagePopups';
+export { getPopupPathFromParams, getStoredPopupContext, storePopupContext, withSearchParams } from './pagePopupUtils';
+export * from './PageTab.Settings';
+export { PopupSettingsProvider, usePopupSettings } from './PopupSettingsProvider';

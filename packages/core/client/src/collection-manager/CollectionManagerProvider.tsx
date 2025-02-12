@@ -7,15 +7,14 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
-import React from 'react';
-import { useAPIClient, useRequest } from '../api-client';
-import { CollectionManagerSchemaComponentProvider } from './CollectionManagerSchemaComponentProvider';
-import { CollectionCategroriesContext } from './context';
-import { CollectionManagerOptions } from './types';
+import React, { createContext, useContext, useMemo } from 'react';
+import { useRequest } from '../api-client';
 import { CollectionManagerProvider } from '../data-source/collection/CollectionManagerProvider';
 import { useDataSourceManager } from '../data-source/data-source/DataSourceManagerProvider';
 import { useCollectionHistory } from './CollectionHistoryProvider';
-import { useAppSpin } from '../application/hooks/useAppSpin';
+import { CollectionManagerSchemaComponentProvider } from './CollectionManagerSchemaComponentProvider';
+import { CollectionCategoriesContext } from './context';
+import { CollectionManagerOptions } from './types';
 
 /**
  * @deprecated use `CollectionManagerProvider` instead
@@ -28,55 +27,38 @@ export const CollectionManagerProvider_deprecated: React.FC<CollectionManagerOpt
   );
 };
 
+const RemoteCollectionManagerLoadingContext = createContext(false);
+
+export const useRemoteCollectionManagerLoading = () => {
+  return useContext(RemoteCollectionManagerLoadingContext);
+};
+
 export const RemoteCollectionManagerProvider = (props: any) => {
-  const api = useAPIClient();
   const dm = useDataSourceManager();
   const { refreshCH } = useCollectionHistory();
 
-  const coptions = {
-    url: 'collectionCategories:list',
-    params: {
-      paginate: false,
-      sort: ['sort'],
-    },
-  };
   const service = useRequest<{
     data: any;
   }>(() => {
     return dm.reload().then(refreshCH);
   });
-  const result = useRequest<{
-    data: any;
-  }>(coptions);
 
-  const { render } = useAppSpin();
-  if (service.loading) {
-    return render();
-  }
-
-  const refreshCategory = async () => {
-    const { data } = await api.request(coptions);
-    result.mutate(data);
-    return data?.data || [];
-  };
   return (
-    <CollectionCategroriesProvider service={{ ...result }} refreshCategory={refreshCategory}>
-      <CollectionManagerProvider_deprecated {...props}></CollectionManagerProvider_deprecated>
-    </CollectionCategroriesProvider>
+    <RemoteCollectionManagerLoadingContext.Provider value={service.loading}>
+      <CollectionManagerProvider_deprecated {...props} />
+    </RemoteCollectionManagerLoadingContext.Provider>
   );
 };
 
-export const CollectionCategroriesProvider = (props) => {
+export const CollectionCategoriesProvider = (props) => {
   const { service, refreshCategory } = props;
-  return (
-    <CollectionCategroriesContext.Provider
-      value={{
-        data: service?.data?.data,
-        refresh: refreshCategory,
-        ...props,
-      }}
-    >
-      {props.children}
-    </CollectionCategroriesContext.Provider>
+  const value = useMemo(
+    () => ({
+      data: service?.data?.data,
+      refresh: refreshCategory,
+      ...props,
+    }),
+    [service?.data?.data, refreshCategory, props],
   );
+  return <CollectionCategoriesContext.Provider value={value}>{props.children}</CollectionCategoriesContext.Provider>;
 };

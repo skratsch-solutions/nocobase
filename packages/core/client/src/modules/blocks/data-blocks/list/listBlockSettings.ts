@@ -19,7 +19,9 @@ import { SchemaSettingsBlockHeightItem } from '../../../../schema-settings/Schem
 import { SchemaSettingsBlockTitleItem } from '../../../../schema-settings/SchemaSettingsBlockTitleItem';
 import { SchemaSettingsDataScope } from '../../../../schema-settings/SchemaSettingsDataScope';
 import { SchemaSettingsTemplate } from '../../../../schema-settings/SchemaSettingsTemplate';
+import { useBlockTemplateContext } from '../../../../schema-templates/BlockTemplateProvider';
 import { setDataLoadingModeSettingsItem } from '../details-multi/setDataLoadingModeSettingsItem';
+import { SchemaSettingsLayoutItem } from '../../../../schema-settings/SchemaSettingsLayoutItem';
 
 export const listBlockSettings = new SchemaSettings({
   name: 'blockSettings:list',
@@ -186,11 +188,12 @@ export const listBlockSettings = new SchemaSettings({
           title: t('Records per page'),
           value: field.decoratorProps?.params?.pageSize || 20,
           options: [
+            { label: '5', value: 5 },
             { label: '10', value: 10 },
             { label: '20', value: 20 },
             { label: '50', value: 50 },
-            { label: '80', value: 80 },
             { label: '100', value: 100 },
+            { label: '200', value: 200 },
           ],
           onChange: (pageSize) => {
             _.set(fieldSchema, 'x-decorator-props.params.pageSize', pageSize);
@@ -211,15 +214,20 @@ export const listBlockSettings = new SchemaSettings({
       useComponentProps() {
         const { name } = useCollection_deprecated();
         const fieldSchema = useFieldSchema();
+        const { componentNamePrefix } = useBlockTemplateContext();
         const defaultResource =
           fieldSchema?.['x-decorator-props']?.resource || fieldSchema?.['x-decorator-props']?.association;
 
         return {
-          componentName: 'List',
+          componentName: `${componentNamePrefix}List`,
           collectionName: name,
           resourceName: defaultResource,
         };
       },
+    },
+    {
+      name: 'setBlockLayout',
+      Component: SchemaSettingsLayoutItem,
     },
     {
       name: 'divider',

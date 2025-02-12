@@ -69,7 +69,7 @@ const PreviewCom = (props) => {
         };
       });
       const children = collection.fields
-        .filter((v) => !['hasOne', 'hasMany', 'belongsToMany'].includes(v?.type))
+        .filter((v) => !['obo', 'oho', 'm2m', 'o2m'].includes(v?.interface))
         ?.map((v) => {
           return { value: v.name, key: v.name, label: t(v.uiSchema?.title || v.name) };
         })
@@ -266,7 +266,11 @@ const PreviewCom = (props) => {
 };
 
 function areEqual(prevProps, nextProps) {
-  return nextProps.name === prevProps.name && nextProps.sources === prevProps.sources;
+  return (
+    nextProps.viewName === prevProps.viewName &&
+    nextProps.schema === prevProps.schema &&
+    nextProps.source === prevProps.source
+  );
 }
 
 export const PreviewFields = React.memo(PreviewCom, areEqual);

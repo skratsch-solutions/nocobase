@@ -7,6 +7,8 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
+import React from 'react';
+import { MailOutlined } from '@ant-design/icons';
 import { ArrayItems } from '@formily/antd-v5';
 
 import { SchemaComponentContext, css } from '@nocobase/client';
@@ -32,6 +34,7 @@ export default class extends Instruction {
   type = 'mailer';
   group = 'extended';
   description = `{{t("Send email. You can use the variables in the upstream nodes as receivers, subject and content of the email.", { ns: "${NAMESPACE}" })}}`;
+  icon = (<MailOutlined style={{}} />);
   fieldset = {
     provider: {
       type: 'object',
@@ -53,7 +56,7 @@ export default class extends Instruction {
                   'x-component': 'Grid.Col',
                   'x-component-props': {
                     // flex: 'auto',
-                    width: 64,
+                    width: 50,
                   },
                   properties: {
                     host: {
@@ -61,7 +64,10 @@ export default class extends Instruction {
                       required: true,
                       title: `{{t("SMTP host", { ns: "${NAMESPACE}" })}}`,
                       'x-decorator': 'FormItem',
-                      'x-component': 'Input',
+                      'x-component': 'WorkflowVariableInput',
+                      'x-component-props': {
+                        useTypedConstant: [['string', { placeholder: 'smtp.example.com' }]],
+                      },
                     },
                   },
                 },
@@ -70,7 +76,7 @@ export default class extends Instruction {
                   'x-component': 'Grid.Col',
                   'x-component-props': {
                     // flex: '6em',
-                    width: 16,
+                    width: 25,
                   },
                   properties: {
                     port: {
@@ -78,11 +84,18 @@ export default class extends Instruction {
                       required: true,
                       title: `{{t("Port", { ns: "${NAMESPACE}" })}}`,
                       'x-decorator': 'FormItem',
-                      'x-component': 'InputNumber',
+                      'x-component': 'WorkflowVariableInput',
                       'x-component-props': {
-                        min: 1,
-                        max: 65535,
-                        step: 1,
+                        useTypedConstant: [
+                          [
+                            'number',
+                            {
+                              min: 1,
+                              max: 65535,
+                              step: 1,
+                            },
+                          ],
+                        ],
                       },
                       default: 465,
                     },
@@ -93,14 +106,17 @@ export default class extends Instruction {
                   'x-component': 'Grid.Col',
                   'x-component-props': {
                     // flex: '4em',
-                    width: 16,
+                    width: 25,
                   },
                   properties: {
                     secure: {
                       type: 'boolean',
                       title: `{{t("Secure", { ns: "${NAMESPACE}" })}}`,
                       'x-decorator': 'FormItem',
-                      'x-component': 'Checkbox',
+                      'x-component': 'WorkflowVariableInput',
+                      'x-component-props': {
+                        useTypedConstant: [['boolean', { style: { width: '100%' } }]],
+                      },
                       default: true,
                     },
                   },
@@ -127,10 +143,13 @@ export default class extends Instruction {
                   properties: {
                     'auth.user': {
                       type: 'string',
-                      required: true,
+                      // required: true,
                       title: `{{t("User", { ns: "${NAMESPACE}" })}}`,
                       'x-decorator': 'FormItem',
-                      'x-component': 'Input',
+                      'x-component': 'WorkflowVariableInput',
+                      'x-component-props': {
+                        useTypedConstant: [['string', { placeholder: 'example@domain.com' }]],
+                      },
                     },
                   },
                 },
@@ -140,10 +159,13 @@ export default class extends Instruction {
                   properties: {
                     'auth.pass': {
                       type: 'string',
-                      required: true,
+                      // required: true,
                       title: `{{t("Password", { ns: "${NAMESPACE}" })}}`,
                       'x-decorator': 'FormItem',
-                      'x-component': 'Password',
+                      'x-component': 'WorkflowVariableInput',
+                      'x-component-props': {
+                        useTypedConstant: [['string', { type: 'password' }]],
+                      },
                     },
                   },
                 },
@@ -160,7 +182,7 @@ export default class extends Instruction {
       'x-decorator': 'FormItem',
       'x-component': 'WorkflowVariableInput',
       'x-component-props': {
-        useTypedConstant: ['string'],
+        useTypedConstant: [['string', { placeholder: 'noreply <example@domain.com>' }]],
       },
     },
     to: {
@@ -289,7 +311,7 @@ export default class extends Instruction {
     },
     subject: {
       type: 'string',
-      required: true,
+      // required: true,
       title: `{{t("Subject", { ns: "${NAMESPACE}" })}}`,
       'x-decorator': 'FormItem',
       'x-component': 'WorkflowVariableTextArea',
@@ -307,7 +329,7 @@ export default class extends Instruction {
     },
     html: {
       type: 'string',
-      required: true,
+      // required: true,
       title: `{{t("Content", { ns: "${NAMESPACE}" })}}`,
       'x-decorator': 'FormItem',
       'x-decorator-props': {},
@@ -331,7 +353,7 @@ export default class extends Instruction {
     },
     text: {
       type: 'string',
-      required: true,
+      // required: true,
       title: `{{t("Content", { ns: "${NAMESPACE}" })}}`,
       'x-decorator': 'FormItem',
       'x-decorator-props': {},

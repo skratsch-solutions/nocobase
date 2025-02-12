@@ -10,6 +10,7 @@
 export type CollectionOptions = {
   name: string;
   repository?: string;
+  filterTargetKey?: string | Array<string>;
   fields: any[];
   [key: string]: any;
 };
@@ -24,8 +25,8 @@ export type FieldOptions = {
   uiSchema?: any;
   possibleTypes?: string[];
   defaultValue?: any;
-  primaryKey: boolean;
-  unique: boolean;
+  primaryKey?: boolean;
+  unique?: boolean;
   allowNull?: boolean;
   autoIncrement?: boolean;
   [key: string]: any;
@@ -33,6 +34,7 @@ export type FieldOptions = {
 
 export interface IField {
   options: FieldOptions;
+
   isRelationField(): boolean;
 }
 
@@ -44,6 +46,7 @@ export interface IFieldInterface {
   options: FieldOptions;
 
   toString(value: any, ctx?: any): string;
+
   toValue(str: string, ctx?: any): any;
 }
 
@@ -62,7 +65,12 @@ export interface ICollection {
 
   getField(name: string): IField;
 
+  getFieldByField(field: string): IField;
+
   [key: string]: any;
+
+  unavailableActions?: () => string[];
+  availableActions?: () => string[];
 }
 
 export interface IModel {
@@ -106,9 +114,9 @@ export interface ICollectionManager {
 
   registerModels(models: Record<string, any>): void;
 
-  registerRepositories(repositories: Record<string, any>): void;
+  registerRepositories(repositories: Record<string, new (collection: ICollection) => IRepository>): void;
 
-  getRegisteredRepository(key: string): IRepository;
+  getRegisteredRepository(key: string): new (collection: ICollection) => IRepository;
 
   defineCollection(options: CollectionOptions): ICollection;
 
@@ -119,6 +127,8 @@ export interface ICollectionManager {
   getCollection(name: string): ICollection;
 
   getCollections(): Array<ICollection>;
+
+  removeCollection(name: string): void;
 
   getRepository(name: string, sourceId?: string | number): IRepository;
 

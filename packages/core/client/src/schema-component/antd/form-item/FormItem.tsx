@@ -18,14 +18,14 @@ import { useFormActiveFields } from '../../../block-provider/hooks/useFormActive
 import { Collection_deprecated } from '../../../collection-manager';
 import { CollectionFieldProvider } from '../../../data-source/collection-field/CollectionFieldProvider';
 import { withDynamicSchemaProps } from '../../../hoc/withDynamicSchemaProps';
+import { useDataFormItemProps } from '../../../modules/blocks/data-blocks/form/hooks/useDataFormItemProps';
 import { GeneralSchemaDesigner } from '../../../schema-settings';
-import { useVariables } from '../../../variables';
-import useContextVariable from '../../../variables/hooks/useContextVariable';
 import { BlockItem } from '../block-item';
 import { HTMLEncode } from '../input/shared';
 import { FilterFormDesigner } from './FormItem.FilterFormDesigner';
 import { useEnsureOperatorsValid } from './SchemaSettingOptions';
 import useLazyLoadDisplayAssociationFieldsOfForm from './hooks/useLazyLoadDisplayAssociationFieldsOfForm';
+import { useLinkageRulesForSubTableOrSubForm } from './hooks/useLinkageRulesForSubTableOrSubForm';
 import useParseDefaultValue from './hooks/useParseDefaultValue';
 
 Item.displayName = 'FormilyFormItem';
@@ -50,17 +50,12 @@ export const FormItem: any = withDynamicSchemaProps(
     useEnsureOperatorsValid();
     const field = useField<Field>();
     const schema = useFieldSchema();
-    const contextVariable = useContextVariable();
-    const variables = useVariables();
     const { addActiveFieldName } = useFormActiveFields() || {};
+    const { wrapperStyle }: { wrapperStyle: any } = useDataFormItemProps();
 
-    useEffect(() => {
-      variables?.registerVariable(contextVariable);
-    }, [contextVariable]);
-
-    // 需要放在注冊完变量之后
     useParseDefaultValue();
     useLazyLoadDisplayAssociationFieldsOfForm();
+    useLinkageRulesForSubTableOrSubForm();
 
     useEffect(() => {
       addActiveFieldName?.(schema.name as string);
@@ -86,11 +81,35 @@ export const FormItem: any = withDynamicSchemaProps(
       });
     }, [showTitle]);
 
+    // 联动规则中的“隐藏保留值”的效果
+    if (field.data?.hidden) {
+      return null;
+    }
+
     return (
       <CollectionFieldProvider allowNull={true}>
-        <BlockItem className={'nb-form-item'}>
+        <BlockItem
+          className={cx(
+            'nb-form-item',
+            css`
+              .ant-formily-item-layout-horizontal .ant-formily-item-control {
+                max-width: ${showTitle === false || schema['x-component'] !== 'CollectionField'
+                  ? '100% !important'
+                  : null};
+              }
+            `,
+          )}
+        >
           <ACLCollectionFieldProvider>
-            <Item className={className} {...props} extra={extra} />
+            <Item
+              className={className}
+              {...props}
+              extra={extra}
+              wrapperStyle={{
+                ...(wrapperStyle.backgroundColor ? { paddingLeft: '5px', paddingRight: '5px' } : {}),
+                ...wrapperStyle,
+              }}
+            />
           </ACLCollectionFieldProvider>
         </BlockItem>
       </CollectionFieldProvider>

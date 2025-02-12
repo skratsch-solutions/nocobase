@@ -9,16 +9,18 @@
 
 import { FormLayout } from '@formily/antd-v5';
 import { createForm } from '@formily/core';
-import { FieldContext, FormContext, observer, RecursionField, useField, useFieldSchema } from '@formily/react';
+import { FieldContext, FormContext, observer, useField, useFieldSchema } from '@formily/react';
 import { Options, Result } from 'ahooks/es/useRequest/src/types';
 import { ConfigProvider, Spin } from 'antd';
 import React, { createContext, useContext, useEffect, useMemo } from 'react';
 import { useAttach, useComponent } from '../..';
 import { useRequest } from '../../../api-client';
 import { useCollection_deprecated } from '../../../collection-manager';
+import { NocoBaseRecursionField } from '../../../formily/NocoBaseRecursionField';
 import { GeneralSchemaDesigner, SchemaSettingsDivider, SchemaSettingsRemove } from '../../../schema-settings';
 import { SchemaSettingsTemplate } from '../../../schema-settings/SchemaSettingsTemplate';
 import { useSchemaTemplate } from '../../../schema-templates';
+import { useBlockTemplateContext } from '../../../schema-templates/BlockTemplateProvider';
 
 type Opts = Options<any, any> & { uid?: string };
 
@@ -38,7 +40,7 @@ const FormComponent: React.FC<FormProps> = (props) => {
     <FieldContext.Provider value={undefined}>
       <FormContext.Provider value={form}>
         <FormLayout layout={'vertical'} {...others}>
-          <RecursionField basePath={f.address} schema={fieldSchema} onlyRenderProperties />
+          <NocoBaseRecursionField basePath={f.address} schema={fieldSchema} onlyRenderProperties />
         </FormLayout>
       </FormContext.Provider>
     </FieldContext.Provider>
@@ -64,7 +66,7 @@ const FormDecorator: React.FC<FormProps> = (props) => {
           <FormLayout layout={'vertical'} {...others}>
             <FieldContext.Provider value={f}>
               <Component {...field.componentProps}>
-                <RecursionField basePath={f.address} schema={fieldSchema} onlyRenderProperties />
+                <NocoBaseRecursionField basePath={f.address} schema={fieldSchema} onlyRenderProperties />
               </Component>
             </FieldContext.Provider>
             {/* <FieldContext.Provider value={f}>{children}</FieldContext.Provider> */}
@@ -130,9 +132,10 @@ export const Form: React.FC<FormProps> & { Designer?: any } = observer(
 Form.Designer = function Designer() {
   const { name, title } = useCollection_deprecated();
   const template = useSchemaTemplate();
+  const { componentNamePrefix } = useBlockTemplateContext();
   return (
     <GeneralSchemaDesigner template={template} title={title || name}>
-      <SchemaSettingsTemplate componentName={'Form'} collectionName={name} />
+      <SchemaSettingsTemplate componentName={`${componentNamePrefix}Form`} collectionName={name} />
       <SchemaSettingsDivider />
       <SchemaSettingsRemove
         removeParentsIfNoChildren

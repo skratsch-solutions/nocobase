@@ -16,9 +16,15 @@ import {
   SchemaSettingsRemove,
   SchemaSettingsSelectItem,
   useDesignable,
+  useOpenModeContext,
   useSchemaToolbar,
+  SecondConFirm,
+  WorkflowConfig,
+  AfterSuccess,
+  RefreshDataBlockRequest,
 } from '@nocobase/client';
 import { ModalProps } from 'antd';
+import { isValid } from '@formily/shared';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -32,7 +38,7 @@ function UpdateMode() {
       title={t('Data will be updated')}
       options={[
         { label: t('Selected'), value: 'selected' },
-        { label: t('All'), value: 'all' },
+        { label: t('Entire collection', { ns: 'action-bulk-edit' }), value: 'all' },
       ]}
       value={fieldSchema?.['x-action-settings']?.['updateMode']}
       onChange={(value) => {
@@ -137,20 +143,71 @@ export const bulkEditActionSettings = new SchemaSettings({
       name: 'openMode',
       Component: SchemaInitializerOpenModeSchemaItems,
       useComponentProps() {
+        const { hideOpenMode } = useOpenModeContext();
         const fieldSchema = useFieldSchema();
         const isPopupAction = ['create', 'update', 'view', 'customize:popup', 'duplicate', 'customize:create'].includes(
           fieldSchema['x-action'] || '',
         );
 
         return {
-          openMode: isPopupAction,
-          openSize: isPopupAction,
+          openMode: isPopupAction && !hideOpenMode,
+          openSize: isPopupAction && !hideOpenMode,
         };
       },
     },
     {
       name: 'updateMode',
       Component: UpdateMode,
+    },
+    {
+      name: 'remove',
+      sort: 100,
+      Component: RemoveButton as any,
+      useComponentProps() {
+        const { removeButtonProps } = useSchemaToolbar();
+        return removeButtonProps;
+      },
+    },
+  ],
+});
+/**
+ * 批量编辑表单的submit 按钮
+ */
+export const bulkEditFormSubmitActionSettings = new SchemaSettings({
+  name: 'actionSettings:bulkEditSubmit',
+  items: [
+    {
+      name: 'editButton',
+      Component: ActionDesigner.ButtonEditor,
+      useComponentProps() {
+        const { buttonEditorProps } = useSchemaToolbar();
+        return buttonEditorProps;
+      },
+    },
+    {
+      name: 'secondConfirmation',
+      Component: SecondConFirm,
+    },
+    {
+      name: 'workflowConfig',
+      Component: WorkflowConfig,
+      useVisible() {
+        const fieldSchema = useFieldSchema();
+        return isValid(fieldSchema?.['x-action-settings']?.triggerWorkflows);
+      },
+    },
+    {
+      name: 'afterSuccessfulSubmission',
+      Component: AfterSuccess,
+    },
+    {
+      name: 'refreshDataBlockRequest',
+      Component: RefreshDataBlockRequest,
+      useComponentProps() {
+        return {
+          isPopupAction: true,
+        };
+      },
     },
     {
       name: 'remove',

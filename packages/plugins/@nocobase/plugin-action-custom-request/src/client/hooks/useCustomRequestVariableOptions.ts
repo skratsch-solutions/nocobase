@@ -9,8 +9,10 @@
 
 import {
   DEFAULT_DATA_SOURCE_KEY,
+  useBlockContext,
   useCollection_deprecated,
   useCollectionFilterOptions,
+  useCollectionRecordData,
   useCompile,
 } from '@nocobase/client';
 import { useMemo } from 'react';
@@ -22,15 +24,23 @@ export const useCustomRequestVariableOptions = () => {
   const fieldsOptions = useCollectionFilterOptions(collection);
   const userFieldOptions = useCollectionFilterOptions('users', DEFAULT_DATA_SOURCE_KEY);
   const compile = useCompile();
+  const recordData = useCollectionRecordData();
+  const { name: blockType } = useBlockContext() || {};
 
   const [fields, userFields] = useMemo(() => {
     return [compile(fieldsOptions), compile(userFieldOptions)];
   }, [fieldsOptions, userFieldOptions]);
+
   return useMemo(() => {
     return [
-      {
+      recordData && {
         name: 'currentRecord',
         title: t('Current record', { ns: 'client' }),
+        children: [...fields],
+      },
+      blockType === 'form' && {
+        name: '$nForm',
+        title: t('Current form', { ns: 'client' }),
         children: [...fields],
       },
       {
@@ -43,6 +53,11 @@ export const useCustomRequestVariableOptions = () => {
         title: t('Current time', { ns: 'client' }),
         children: null,
       },
-    ];
-  }, [fields, userFields]);
+      {
+        name: '$nToken',
+        title: 'API token',
+        children: null,
+      },
+    ].filter(Boolean);
+  }, [recordData, t, fields, blockType, userFields]);
 };

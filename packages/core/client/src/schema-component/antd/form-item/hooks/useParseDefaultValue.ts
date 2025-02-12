@@ -14,8 +14,13 @@ import { getValuesByPath } from '@nocobase/utils/client';
 import _ from 'lodash';
 import { useCallback, useEffect } from 'react';
 import { useRecordIndex } from '../../../../../src/record-provider';
-import { useCollection_deprecated } from '../../../../collection-manager';
+import { useOperators } from '../../../../block-provider/CollectOperators';
+import { useFormBlockContext } from '../../../../block-provider/FormBlockProvider';
+import { InheritanceCollectionMixin } from '../../../../collection-manager';
 import { useCollectionRecord } from '../../../../data-source/collection-record/CollectionRecordProvider';
+import { useCollection } from '../../../../data-source/collection/CollectionProvider';
+import { DataSourceManager } from '../../../../data-source/data-source/DataSourceManager';
+import { useDataSourceManager } from '../../../../data-source/data-source/DataSourceManagerProvider';
 import { useFlag } from '../../../../flag-provider';
 import { DEBOUNCE_WAIT, useLocalVariables, useVariables } from '../../../../variables';
 import { getPath } from '../../../../variables/utils/getPath';
@@ -36,9 +41,12 @@ const useParseDefaultValue = () => {
   const record = useCollectionRecord();
   const { isInAssignFieldValues, isInSetDefaultValueDialog, isInFormDataTemplate, isInSubTable, isInSubForm } =
     useFlag() || {};
-  const { getField } = useCollection_deprecated();
+  const collection = useCollection();
   const { isSpecialCase, setDefaultValue } = useSpecialCase();
   const index = useRecordIndex();
+  const { type, form } = useFormBlockContext();
+  const { getOperator } = useOperators();
+  const dm = useDataSourceManager();
 
   /**
    * name: 如 $user
@@ -55,6 +63,12 @@ const useParseDefaultValue = () => {
   );
 
   useEffect(() => {
+    // fix https://tasks.aliyun.nocobase.com/admin/ugmnj2ycfgg/popups/1qlw5c38t3b/puid/dz42x7ffr7i/filterbytk/182
+    // to clear the default value of the field
+    if (type === 'update' && fieldSchema.default && field.form === form) {
+      field.setValue?.(record?.data?.[fieldSchema.name]);
+    }
+
     if (
       fieldSchema.default == null ||
       isInSetDefaultValueDialog ||
@@ -78,7 +92,7 @@ const useParseDefaultValue = () => {
         }
 
         field.loading = true;
-        const collectionField = !fieldSchema.name.toString().includes('.') && getField(fieldSchema.name);
+        const collectionField = !fieldSchema.name.toString().includes('.') && collection?.getField(fieldSchema.name);
 
         if (process.env.NODE_ENV !== 'production') {
           if (!collectionField) {
@@ -86,15 +100,36 @@ const useParseDefaultValue = () => {
           }
         }
 
-        const value = transformVariableValue(await variables.parseVariable(fieldSchema.default, localVariables), {
+        const {
+          value: parsedValue,
+          collectionName: collectionNameOfVariable,
+          dataSource = 'main',
+        } = await variables.parseVariable(fieldSchema.default, localVariables, {
+          fieldOperator: getOperator(fieldSchema.name),
+        });
+
+        if (
+          collectionField?.target &&
+          collectionNameOfVariable &&
+          collectionField.target !== collectionNameOfVariable &&
+          !isInherit({
+            collectionName: collectionField.target,
+            targetCollectionName: collectionNameOfVariable,
+            dm,
+            dataSource,
+          })
+        ) {
+          field.loading = false;
+          return;
+        }
+
+        const value = transformVariableValue(parsedValue, {
           targetCollectionField: collectionField,
         });
 
         if (value == null || value === '') {
-          // fix https://nocobase.height.app/T-4350/description
           // 如果 field.mounted 为 false，说明 field 已经被卸载了，不需要再设置默认值
           if (field.mounted) {
-            // fix https://nocobase.height.app/T-2805
             field.setInitialValue(null);
             await field.reset({ forceClear: true });
           }
@@ -154,7 +189,30 @@ const useParseDefaultValue = () => {
       // 解决子表格（或子表单）中新增一行数据时，默认值不生效的问题
       field.setValue(fieldSchema.default);
     }
-  }, [fieldSchema.default, localVariables]);
+  }, [fieldSchema.default, localVariables, type, getOperator, dm, collection]);
 };
 
 export default useParseDefaultValue;
+
+/**
+ * Determine if there is an inheritance relationship between two data tables
+ * @param param0
+ * @returns
+ */
+const isInherit = ({
+  collectionName,
+  targetCollectionName,
+  dm,
+  dataSource,
+}: {
+  collectionName: string;
+  targetCollectionName: string;
+  dm: DataSourceManager;
+  dataSource: string;
+}) => {
+  const cm = dm?.getDataSource(dataSource)?.collectionManager;
+  return cm
+    ?.getCollection<InheritanceCollectionMixin>(collectionName)
+    ?.getAllCollectionsInheritChain()
+    ?.includes(targetCollectionName);
+};

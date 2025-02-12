@@ -11,15 +11,15 @@ import { Context, Next } from '@nocobase/actions';
 import { koaMulter as multer } from '@nocobase/utils';
 import Path from 'path';
 
+import Plugin from '..';
 import {
+  FILE_FIELD_NAME,
   FILE_SIZE_LIMIT_DEFAULT,
   FILE_SIZE_LIMIT_MAX,
-  FILE_FIELD_NAME,
-  LIMIT_FILES,
   FILE_SIZE_LIMIT_MIN,
+  LIMIT_FILES,
 } from '../../constants';
 import * as Rules from '../rules';
-import Plugin from '..';
 
 // TODO(optimize): 需要优化错误处理，计算失败后需要抛出对应错误，以便程序处理
 function getFileFilter(storage) {
@@ -33,7 +33,7 @@ function getFileFilter(storage) {
   };
 }
 
-function getFileData(ctx: Context) {
+export function getFileData(ctx: Context) {
   const { [FILE_FIELD_NAME]: file, storage } = ctx;
   if (!file) {
     return ctx.throw(400, 'file validation failed');
@@ -100,7 +100,7 @@ async function multipart(ctx: Context, next: Next) {
       return ctx.throw(400, err);
     }
     ctx.logger.error(err);
-    return ctx.throw(500);
+    return ctx.throw(500, err);
   }
 
   const values = getFileData(ctx);
@@ -126,72 +126,9 @@ export async function createMiddleware(ctx: Context, next: Next) {
   const storage = await StorageRepo.findOne({ filter: storageName ? { name: storageName } : { default: true } });
 
   ctx.storage = storage;
-
-  await multipart(ctx, next);
-}
-
-export async function destroyMiddleware(ctx: Context, next: Next) {
-  const { resourceName, actionName } = ctx.action;
-  const collection = ctx.db.getCollection(resourceName);
-
-  if (collection?.options?.template !== 'file' || actionName !== 'destroy') {
-    return next();
+  if (ctx?.request.is('multipart/*')) {
+    await multipart(ctx, next);
+  } else {
+    await next();
   }
-
-  const repository = ctx.db.getRepository(resourceName);
-
-  const { filterByTk, filter } = ctx.action.params;
-
-  const records = await repository.find({
-    filterByTk,
-    filter,
-    context: ctx,
-  });
-
-  const storageIds = new Set(records.map((record) => record.storageId));
-  const storageGroupedRecords = records.reduce((result, record) => {
-    const storageId = record.storageId;
-    if (!result[storageId]) {
-      result[storageId] = [];
-    }
-    result[storageId].push(record);
-    return result;
-  }, {});
-
-  const storages = await ctx.db.getRepository('storages').find({
-    filter: {
-      id: [...storageIds] as any[],
-      paranoid: {
-        $ne: true,
-      },
-    },
-  });
-
-  let count = 0;
-  const undeleted = [];
-  await storages.reduce(
-    (promise, storage) =>
-      promise.then(async () => {
-        const storageConfig = ctx.app.pm.get(Plugin).storageTypes.get(storage.type);
-        const result = await storageConfig.delete(storage, storageGroupedRecords[storage.id]);
-        count += result[0];
-        undeleted.push(...result[1]);
-      }),
-    Promise.resolve(),
-  );
-
-  if (undeleted.length) {
-    const ids = undeleted.map((record) => record.id);
-    ctx.action.mergeParams({
-      filter: {
-        id: {
-          $notIn: ids,
-        },
-      },
-    });
-
-    ctx.logger.error('[file-manager] some of attachment files are not successfully deleted: ', { ids });
-  }
-
-  await next();
 }
