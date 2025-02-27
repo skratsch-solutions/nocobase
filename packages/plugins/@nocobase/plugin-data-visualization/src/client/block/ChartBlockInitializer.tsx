@@ -110,12 +110,21 @@ export const ChartV2BlockInitializer: React.FC = () => {
       onClick={() => {
         insert({
           type: 'void',
-          'x-component': 'CardItem',
-          'x-component-props': {
-            name: 'charts',
-          },
+          'x-component': 'ChartCardItem',
+          'x-use-component-props': 'useChartBlockCardProps',
           'x-designer': 'ChartV2BlockDesigner',
+          'x-decorator': 'ChartBlockProvider',
           properties: {
+            actions: {
+              type: 'void',
+              'x-component': 'ActionBar',
+              'x-component-props': {
+                style: {
+                  marginBottom: 'var(--nb-designer-offset)',
+                },
+              },
+              'x-initializer': 'chartBlock:configureActions',
+            },
             [uid()]: {
               type: 'void',
               'x-component': 'Grid',

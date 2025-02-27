@@ -8,7 +8,7 @@
  */
 
 import { merge, uid } from '@formily/shared';
-import { SchemaInitializerItem, useSchemaInitializer, useSchemaInitializerItem } from '@nocobase/client';
+import { SchemaInitializerItem, useDesignable, useSchemaInitializer, useSchemaInitializerItem } from '@nocobase/client';
 import React from 'react';
 import { useCustomRequestsResource } from '../hooks/useCustomRequestsResource';
 
@@ -35,21 +35,23 @@ export const CustomRequestInitializer: React.FC<any> = (props) => {
   const customRequestsResource = useCustomRequestsResource();
   const itemConfig = useSchemaInitializerItem();
   const { insert } = useSchemaInitializer();
+  const schema = getNewSchema();
 
   return (
     <SchemaInitializerItem
       {...itemConfig}
       onClick={async () => {
-        const schema = getNewSchema();
         const s = merge(schema || {}, itemConfig.schema || {});
         itemConfig?.schemaInitialize?.(s);
-        insert(s);
+
         // create a custom request
         await customRequestsResource.create({
           values: {
             key: s['x-uid'],
           },
         });
+
+        insert(s);
       }}
     />
   );

@@ -11,6 +11,7 @@ import {
   expect,
   expectSettingsMenu,
   oneFilterFormBlockWithAllAssociationFields,
+  oneFilterFormBlockWithAllAssociationFieldsV1333Beta,
   oneTableBlockWithAddNewAndViewAndEditAndAssociationFields,
   test,
 } from '@nocobase/test/e2e';
@@ -26,7 +27,8 @@ test.describe('form item & filter form', () => {
       page,
       showMenu: async () => {
         await page.getByLabel('block-item-CollectionField-general-filter-form-general.manyToOne-manyToOne').hover();
-        await page.getByRole('button', { name: 'designer-schema-settings-CollectionField' }).hover();
+        // hover 方法有时会失效，所以这里使用 click 方法。原因未知
+        await page.getByRole('button', { name: 'designer-schema-settings-CollectionField' }).click();
       },
       supportedOptions: [
         'Edit field title',
@@ -35,6 +37,29 @@ test.describe('form item & filter form', () => {
         'Field component',
         'Title field',
         'Delete',
+      ],
+    });
+  });
+
+  test('v1.3: supported options', async ({ page, mockPage }) => {
+    const nocoPage = await mockPage(oneFilterFormBlockWithAllAssociationFieldsV1333Beta).waitForInit();
+    await nocoPage.goto();
+
+    await expectSettingsMenu({
+      page,
+      showMenu: async () => {
+        await page.getByLabel('block-item-CollectionField-general-filter-form-general.manyToOne-manyToOne').hover();
+        // hover 方法有时会失效，所以这里使用 click 方法。原因未知
+        await page.getByRole('button', { name: 'designer-schema-settings-CollectionField' }).click();
+      },
+      supportedOptions: [
+        'Edit field title',
+        'Edit description',
+        'Set the data scope',
+        'Field component',
+        'Title field',
+        'Delete',
+        'Allow multiple selection',
       ],
     });
   });
@@ -128,11 +153,10 @@ test.describe('table column & table', () => {
 });
 
 test.describe('table column & sub-table', () => {
-  // https://nocobase.height.app/T-3377
   test('title field', async ({ page, mockPage }) => {
     await mockPage(T3377).goto();
 
-    await page.getByRole('button', { name: 'Add new' }).click();
+    await page.locator('.nb-sub-table-addNew').click();
     await page.getByTestId('select-object-multiple').click();
 
     // 下拉列表中应该有值

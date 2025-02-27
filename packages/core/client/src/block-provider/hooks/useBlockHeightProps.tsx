@@ -9,7 +9,7 @@
 
 import { useFieldSchema } from '@formily/react';
 import { useMemo } from 'react';
-import { useBlockTemplateContext } from '../../schema-templates/BlockTemplate';
+import { useBlockTemplateContext } from '../../schema-templates/BlockTemplateProvider';
 
 export const useBlockHeightProps = () => {
   const fieldSchema = useFieldSchema();
@@ -35,7 +35,7 @@ export const getPageSchema = (schema) => {
   return getPageSchema(schema.parent);
 };
 
-const getCardItemSchema = (schema) => {
+export const getCardItemSchema = (schema) => {
   if (!schema) return null;
   if (['BlockItem', 'CardItem'].includes(schema['x-component'])) {
     return schema;

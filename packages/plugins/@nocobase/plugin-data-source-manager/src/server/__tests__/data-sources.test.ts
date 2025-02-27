@@ -23,6 +23,86 @@ describe('data source', async () => {
     await app.destroy();
   });
 
+  it('should return datasource status when datasource is loading or reloading', async () => {
+    class MockDataSource extends DataSource {
+      static testConnection(options?: any): Promise<boolean> {
+        return Promise.resolve(true);
+      }
+
+      async load(): Promise<void> {
+        await waitSecond(1000);
+      }
+
+      createCollectionManager(options?: any): any {
+        return undefined;
+      }
+    }
+
+    app.dataSourceManager.factory.register('mock', MockDataSource);
+
+    app.dataSourceManager.beforeAddDataSource(async (dataSource: DataSource) => {
+      const total = 1000;
+      for (let i = 0; i < total; i++) {
+        dataSource.emitLoadingProgress({
+          total,
+          loaded: i,
+        });
+      }
+    });
+
+    await app.db.getRepository('dataSources').create({
+      values: {
+        key: 'mockInstance1',
+        type: 'mock',
+        displayName: 'Mock',
+        options: {},
+      },
+    });
+
+    await waitSecond(200);
+
+    // get data source status
+    const plugin: any = app.pm.get('data-source-manager');
+    expect(plugin.dataSourceStatus['mockInstance1']).toBe('loading');
+
+    const loadingStatus = plugin.dataSourceLoadingProgress['mockInstance1'];
+    expect(loadingStatus).toBeDefined();
+  });
+
+  it('should get error when datasource loading failed', async () => {
+    class MockDataSource extends DataSource {
+      static testConnection(options?: any): Promise<boolean> {
+        return Promise.resolve(true);
+      }
+
+      async load(): Promise<void> {
+        throw new Error(`load failed`);
+      }
+
+      createCollectionManager(options?: any): any {
+        return undefined;
+      }
+    }
+
+    app.dataSourceManager.factory.register('mock', MockDataSource);
+
+    await app.db.getRepository('dataSources').create({
+      values: {
+        key: 'mockInstance1',
+        type: 'mock',
+        displayName: 'Mock',
+        options: {},
+      },
+    });
+
+    await waitSecond(2000);
+    // get data source status
+    const plugin: any = app.pm.get('data-source-manager');
+    expect(plugin.dataSourceStatus['mockInstance1']).toBe('loading-failed');
+
+    expect(plugin.dataSourceErrors['mockInstance1'].message).toBe('load failed');
+  });
+
   it('should list main datasource in api', async () => {
     const listResp = await app.agent().resource('dataSources').list();
     expect(listResp.status).toBe(200);
@@ -400,7 +480,10 @@ describe('data source', async () => {
         },
       });
 
-      await waitSecond(1000);
+      await waitSecond(2000);
+
+      const dataSource = app.dataSourceManager.dataSources.get('mockInstance1');
+      expect(dataSource).toBeDefined();
     });
 
     it('should get data source collections', async () => {
@@ -515,7 +598,53 @@ describe('data source', async () => {
       expect(field.options.title).toBe('标题 Field');
     });
 
-    it('should create collection field', async () => {
+    it('should update fields through collection', async () => {
+      const dataSource = app.dataSourceManager.dataSources.get('mockInstance1');
+      const collection = dataSource.collectionManager.getCollection('posts');
+
+      const updateResp = await app
+        .agent()
+        .resource('dataSources.collections', 'mockInstance1')
+        .update({
+          filterByTk: 'posts',
+          values: {
+            fields: [
+              {
+                type: 'string',
+                name: 'title',
+                uiSchema: {
+                  test: 'value',
+                },
+              },
+              {
+                type: 'text',
+                name: 'content',
+              },
+            ],
+          },
+        });
+
+      expect(updateResp.status).toBe(200);
+
+      const fieldsOptions = [...collection.fields.values()].map((f) => f.options);
+      // remove a field
+      const newFieldsOptions = fieldsOptions.filter((f) => f.name === 'title');
+
+      const updateResp2 = await app
+        .agent()
+        .resource('dataSources.collections', 'mockInstance1')
+        .update({
+          filterByTk: 'posts',
+          values: {
+            fields: newFieldsOptions,
+          },
+        });
+
+      expect(updateResp2.status).toBe(200);
+      expect(collection.getField('comments')).toBeFalsy();
+    });
+
+    it('should update collection with field', async () => {
       const dataSource = app.dataSourceManager.dataSources.get('mockInstance1');
       const collection = dataSource.collectionManager.getCollection('comments');
 
@@ -549,6 +678,20 @@ describe('data source', async () => {
 
       expect(destroyResp.status).toBe(200);
       expect(collection.getField('post')).toBeFalsy();
+
+      // reload data source manager
+      const refreshResp = await app.agent().resource('dataSources').refresh({
+        filterByTk: 'mockInstance1',
+      });
+
+      expect(refreshResp.status).toBe(200);
+      expect(refreshResp.body.data.status).toBe('reloading');
+
+      await waitSecond(2000);
+
+      const dataSource2 = app.dataSourceManager.dataSources.get('mockInstance1');
+      const collection2 = dataSource2.collectionManager.getCollection('comments');
+      expect(collection2.getField('post')).toBeFalsy();
     });
   });
 });

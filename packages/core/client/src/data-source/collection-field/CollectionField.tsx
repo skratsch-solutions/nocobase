@@ -8,14 +8,15 @@
  */
 
 import { Field } from '@formily/core';
-import { connect, useField, useFieldSchema } from '@formily/react';
+import { connect, Schema, useField, useFieldSchema } from '@formily/react';
+import { untracked } from '@formily/reactive';
 import { merge } from '@formily/shared';
 import { concat } from 'lodash';
-import React, { useCallback, useEffect, useMemo } from 'react';
-import { ErrorBoundary } from 'react-error-boundary';
+import React, { useEffect } from 'react';
 import { useFormBlockContext } from '../../block-provider/FormBlockProvider';
+import { useCollectionFieldUISchema, useIsInNocoBaseRecursionFieldContext } from '../../formily/NocoBaseRecursionField';
 import { useDynamicComponentProps } from '../../hoc/withDynamicSchemaProps';
-import { ErrorFallback, useCompile, useComponent } from '../../schema-component';
+import { useCompile, useComponent } from '../../schema-component';
 import { useIsAllowToSetDefaultValue } from '../../schema-settings/hooks/useIsAllowToSetDefaultValue';
 import { CollectionFieldProvider, useCollectionField } from './CollectionFieldProvider';
 
@@ -24,54 +25,49 @@ type Props = {
   children?: React.ReactNode;
 };
 
+const setFieldProps = (field: Field, key: string, value: any) => {
+  untracked(() => {
+    if (field[key] === undefined) {
+      field[key] = value;
+    }
+  });
+};
+
+const setRequired = (field: Field, fieldSchema: Schema, uiSchema: Schema) => {
+  if (typeof fieldSchema['required'] === 'undefined') {
+    field.required = !!uiSchema['required'];
+  }
+};
+
 /**
- * TODO: 初步适配
+ * @deprecated
+ * Used to handle scenarios that use RecursionField, such as various plugin configuration pages
  * @internal
  */
-export const CollectionFieldInternalField: React.FC = (props: Props) => {
-  const { component } = props;
+const CollectionFieldInternalField_deprecated: React.FC = (props: Props) => {
   const compile = useCompile();
   const field = useField<Field>();
   const fieldSchema = useFieldSchema();
-  const collectionField = useCollectionField();
-  const { uiSchema: uiSchemaOrigin, defaultValue } = collectionField;
+  const { uiSchema: uiSchemaOrigin, defaultValue } = useCollectionField();
   const { isAllowToSetDefaultValue } = useIsAllowToSetDefaultValue();
-  const uiSchema = useMemo(() => compile(uiSchemaOrigin), [JSON.stringify(uiSchemaOrigin)]);
   const Component = useComponent(
-    fieldSchema['x-component-props']?.['component'] || uiSchema?.['x-component'] || 'Input',
+    fieldSchema['x-component-props']?.['component'] || uiSchemaOrigin?.['x-component'] || 'Input',
   );
-  const setFieldProps = useCallback(
-    (key, value) => {
-      field[key] = typeof field[key] === 'undefined' ? value : field[key];
-    },
-    [field],
-  );
-  const setRequired = useCallback(() => {
-    if (typeof fieldSchema['required'] === 'undefined') {
-      field.required = !!uiSchema['required'];
-    }
-  }, [fieldSchema, uiSchema]);
   const ctx = useFormBlockContext();
+  const dynamicProps = useDynamicComponentProps(uiSchemaOrigin?.['x-use-component-props'], props);
 
-  const dynamicProps = useDynamicComponentProps(uiSchema?.['x-use-component-props'], props);
-
-  useEffect(() => {
-    if (ctx?.field) {
-      ctx.field.added = ctx.field.added || new Set();
-      ctx.field.added.add(fieldSchema.name);
-    }
-  });
   // TODO: 初步适配
   useEffect(() => {
-    if (!uiSchema) {
+    if (!uiSchemaOrigin) {
       return;
     }
-    setFieldProps('content', uiSchema['x-content']);
-    setFieldProps('title', uiSchema.title);
-    setFieldProps('description', uiSchema.description);
+    const uiSchema = compile(uiSchemaOrigin);
+    setFieldProps(field, 'content', uiSchema['x-content']);
+    setFieldProps(field, 'title', uiSchema.title);
+    setFieldProps(field, 'description', uiSchema.description);
     if (ctx?.form) {
       const defaultVal = isAllowToSetDefaultValue() ? fieldSchema.default || defaultValue : undefined;
-      defaultVal !== null && defaultVal !== undefined && setFieldProps('initialValue', defaultVal);
+      defaultVal !== null && defaultVal !== undefined && setFieldProps(field, 'initialValue', defaultVal);
     }
 
     if (!field.validator && (uiSchema['x-validator'] || fieldSchema['x-validator'])) {
@@ -84,12 +80,35 @@ export const CollectionFieldInternalField: React.FC = (props: Props) => {
     if (fieldSchema['x-read-pretty'] === true) {
       field.readPretty = true;
     }
-    setRequired();
+    setRequired(field, fieldSchema, uiSchema);
     // @ts-ignore
     field.dataSource = uiSchema.enum;
     const originalProps = compile(uiSchema['x-component-props']) || {};
     field.componentProps = merge(originalProps, field.componentProps || {}, dynamicProps || {});
-  }, [uiSchema]);
+  }, [uiSchemaOrigin]);
+
+  if (!uiSchemaOrigin) return null;
+
+  return <Component {...props} {...dynamicProps} />;
+};
+
+const CollectionFieldInternalField = (props) => {
+  const field = useField<Field>();
+  const fieldSchema = useFieldSchema();
+  const { uiSchema } = useCollectionFieldUISchema();
+  const Component = useComponent(
+    fieldSchema['x-component-props']?.['component'] || uiSchema?.['x-component'] || 'Input',
+  );
+  const dynamicProps = useDynamicComponentProps(uiSchema?.['x-use-component-props'], props);
+
+  useEffect(() => {
+    // There seems to be a bug in formily where after setting a field to readPretty, switching to editable,
+    // then back to readPretty, and refreshing the page, the field remains in editable state. The expected state is readPretty.
+    // This code is meant to fix this issue.
+    if (fieldSchema['x-read-pretty'] === true && !field.readPretty) {
+      field.readPretty = true;
+    }
+  }, [field, fieldSchema]);
 
   if (!uiSchema) return null;
 
@@ -98,12 +117,16 @@ export const CollectionFieldInternalField: React.FC = (props: Props) => {
 
 export const CollectionField = connect((props) => {
   const fieldSchema = useFieldSchema();
+  const isInNocoBaseRecursionField = useIsInNocoBaseRecursionFieldContext();
+
   return (
-    <ErrorBoundary FallbackComponent={ErrorFallback.Modal} onError={(err) => console.log(err)}>
-      <CollectionFieldProvider name={fieldSchema.name}>
+    <CollectionFieldProvider name={fieldSchema.name}>
+      {isInNocoBaseRecursionField ? (
         <CollectionFieldInternalField {...props} />
-      </CollectionFieldProvider>
-    </ErrorBoundary>
+      ) : (
+        <CollectionFieldInternalField_deprecated {...props} />
+      )}
+    </CollectionFieldProvider>
   );
 });
 

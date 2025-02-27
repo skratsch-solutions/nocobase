@@ -7,11 +7,10 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
-import { css } from '@emotion/css';
 import { ISchema, Schema, useField, useForm } from '@formily/react';
+import { Select } from 'antd';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Select } from 'antd';
 import { useCollectionManager_deprecated, useDesignable } from '..';
 import { SchemaSettingsModalItem } from './SchemaSettings';
 
@@ -41,7 +40,7 @@ export const SchemaSettingsNumberFormat = function NumberFormatConfig(props: { f
   const collectionField = getCollectionJoinField(fieldSchema?.['x-collection-field']) || {};
   const { formatStyle, unitConversion, unitConversionType, separator, step, addonBefore, addonAfter } =
     fieldSchema['x-component-props'] || {};
-  const { step: prescition } = collectionField?.uiSchema['x-component-props'] || {};
+  const { step: prescition } = collectionField?.uiSchema?.['x-component-props'] || {};
 
   return (
     <SchemaSettingsModalItem
@@ -116,6 +115,9 @@ export const SchemaSettingsNumberFormat = function NumberFormatConfig(props: { f
                 { value: '0.001', label: '1.000' },
                 { value: '0.0001', label: '1.0000' },
                 { value: '0.00001', label: '1.00000' },
+                { value: '0.000001', label: '1.000000' },
+                { value: '0.0000001', label: '1.0000000' },
+                { value: '0.00000001', label: '1.00000000' },
               ],
             },
             addonBefore: {

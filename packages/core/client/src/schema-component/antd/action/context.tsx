@@ -7,40 +7,83 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
-import React, { createContext, useEffect, useRef, useState } from 'react';
-import { useActionContext } from './hooks';
+import { useFieldSchema } from '@formily/react';
+import React, { createContext, FC, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { UseRequestResult } from '../../../api-client/hooks/useRequest';
+import { useIsSubPageClosedByPageMenu } from '../../../application/CustomRouterContextProvider';
 import { useDataBlockRequest } from '../../../data-source';
+import { useCurrentPopupContext } from '../page/PagePopups';
+import { getBlockService, storeBlockService } from '../page/pagePopupUtils';
 import { ActionContextProps } from './types';
 
 export const ActionContext = createContext<ActionContextProps>({});
 ActionContext.displayName = 'ActionContext';
 
-export const ActionContextProvider: React.FC<ActionContextProps & { value?: ActionContextProps }> = (props) => {
-  const [submitted, setSubmitted] = useState(false); //是否有提交记录
-  const contextProps = useActionContext();
-  const { visible } = { ...props, ...props.value } || {};
-  const isFirstRender = useRef(true); // 使用ref跟踪是否为首次渲染
-  const service = useDataBlockRequest();
-  const { setSubmitted: setParentSubmitted } = { ...props, ...props.value, ...contextProps };
-  useEffect(() => {
-    if (visible !== undefined) {
-      if (isFirstRender.current) {
-        isFirstRender.current = false;
-      } else {
-        if (visible === false && submitted && service) {
-          service.refresh();
+export const ActionContextProvider: React.FC<ActionContextProps & { value?: ActionContextProps }> = React.memo(
+  (props) => {
+    const [submitted, setSubmitted] = useState(false); //是否有提交记录
+    const { visible } = { ...props, ...props.value };
+    const { setSubmitted: setParentSubmitted } = { ...props, ...props.value };
+    const service = useBlockServiceInActionButton();
+    const { isSubPageClosedByPageMenu, reset } = useIsSubPageClosedByPageMenu(useFieldSchema());
+
+    useEffect(() => {
+      const run = async () => {
+        if (visible === false && service && !service.loading && (submitted || isSubPageClosedByPageMenu())) {
+          reset();
+
+          // Prevent multiple requests from being triggered
+          service.loading = true;
+          await service.refreshAsync();
+          service.loading = false;
+
+          setSubmitted(false);
           setParentSubmitted?.(true); //传递给上一层
         }
-      }
-    }
-    return () => {
-      setSubmitted(false);
-    };
-  }, [visible]);
+      };
 
-  return (
-    <ActionContext.Provider value={{ ...contextProps, ...props, ...props?.value, submitted, setSubmitted }}>
-      {props.children}
-    </ActionContext.Provider>
-  );
+      run();
+    }, [visible, service, setParentSubmitted, isSubPageClosedByPageMenu, submitted, reset]);
+
+    const value = useMemo(() => ({ ...props, ...props?.value, submitted, setSubmitted }), [props, submitted]);
+
+    return <ActionContext.Provider value={value}>{props.children}</ActionContext.Provider>;
+  },
+);
+
+ActionContextProvider.displayName = 'ActionContextProvider';
+
+const useBlockServiceInActionButton = (): UseRequestResult<any> => {
+  const { params } = useCurrentPopupContext();
+  const popupUidWithoutOpened = useFieldSchema()?.['x-uid'];
+  const service = useDataBlockRequest();
+  const currentPopupUid = params?.popupuid;
+
+  // 把 service 存起来
+  useEffect(() => {
+    if (popupUidWithoutOpened && currentPopupUid !== popupUidWithoutOpened) {
+      storeBlockService(popupUidWithoutOpened, { service });
+    }
+  }, [currentPopupUid, popupUidWithoutOpened, service]);
+
+  // 关闭弹窗时，获取到对应的 service
+  if (currentPopupUid === popupUidWithoutOpened) {
+    return getBlockService(currentPopupUid)?.service || service;
+  }
+
+  return service;
 };
+
+/**
+ * Provides the latest Action context value without re-rendering components to improve rendering performance
+ */
+export const ActionContextNoRerender: FC = React.memo((props) => {
+  const value = useContext(ActionContext);
+  const valueRef = useRef({});
+
+  Object.assign(valueRef.current, value);
+
+  return <ActionContext.Provider value={valueRef.current}>{props.children}</ActionContext.Provider>;
+});
+
+ActionContextNoRerender.displayName = 'ActionContextNoRerender';

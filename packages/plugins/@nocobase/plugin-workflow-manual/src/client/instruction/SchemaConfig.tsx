@@ -11,7 +11,7 @@ import { FormLayout } from '@formily/antd-v5';
 import { createForm } from '@formily/core';
 import { FormProvider, ISchema, Schema, useFieldSchema, useForm } from '@formily/react';
 import { Alert, Button, Modal, Space, message } from 'antd';
-import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -358,7 +358,7 @@ function ActionInitializer() {
           ...actionProps,
           useAction: '{{ useSubmit }}',
         },
-        'x-designer': 'Action.Designer',
+        'x-designer': 'ManualActionDesigner',
         'x-action': `${action}`,
       }}
       type="x-action"
@@ -429,6 +429,7 @@ export function SchemaConfig({ value, onChange }) {
   const nodes = useAvailableUpstreams(node);
   const form = useForm();
   const { workflow } = useFlowContext();
+  const refreshRef = useRef(() => {});
 
   const nodeComponents = {};
   nodes.forEach((item) => {
@@ -451,6 +452,8 @@ export function SchemaConfig({ value, onChange }) {
                   background: var(--nb-box-bg);
                 }
               `,
+              // Using ref to call refresh ensures accessing the latest refresh function
+              onClose: () => refreshRef.current(),
             },
             properties: {
               tabs: {
@@ -499,6 +502,8 @@ export function SchemaConfig({ value, onChange }) {
     },
     [form, onChange, schema],
   );
+
+  refreshRef.current = refresh;
 
   return (
     <SchemaComponentContext.Provider

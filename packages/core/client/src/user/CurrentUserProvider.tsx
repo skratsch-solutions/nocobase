@@ -8,10 +8,10 @@
  */
 
 import React, { createContext, useContext, useMemo } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { useACLRoleContext } from '../acl';
 import { ReturnTypeOfUseRequest, useRequest } from '../api-client';
-import { useAppSpin } from '../application/hooks/useAppSpin';
+import { useAppSpin, useLocationNoUpdate } from '../application';
 import { useCompile } from '../schema-component';
 
 export const CurrentUserContext = createContext<ReturnTypeOfUseRequest>(null);
@@ -51,12 +51,17 @@ export const CurrentUserProvider = (props) => {
   return <CurrentUserContext.Provider value={result}>{props.children}</CurrentUserContext.Provider>;
 };
 
+export const NavigateToSigninWithRedirect = () => {
+  const { pathname, search } = useLocationNoUpdate();
+  const redirect = `?redirect=${pathname}${search}`;
+  return <Navigate replace to={`/signin${redirect}`} />;
+};
+
 export const NavigateIfNotSignIn = ({ children }) => {
   const result = useCurrentUserContext();
-  const { pathname, search } = useLocation();
-  const redirect = `?redirect=${pathname}${search}`;
-  if (!result?.data?.data?.id) {
-    return <Navigate replace to={`/signin${redirect}`} />;
+
+  if (result.loading === false && !result.data?.data?.id) {
+    return <NavigateToSigninWithRedirect />;
   }
   return <>{children}</>;
 };

@@ -11,10 +11,9 @@ import { ISchema, useField, useFieldSchema } from '@formily/react';
 import _ from 'lodash';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { useCollection, useDataBlockProps, useDataBlockRequestGetter } from '../../../../data-source';
 import { useDesignable } from '../../../../schema-component';
 import { SchemaSettingsModalItem, useCollectionState } from '../../../../schema-settings';
-import { useCollection_deprecated } from '../../../../collection-manager/hooks/useCollection_deprecated';
-import { useDataBlockProps, useDataBlockRequest } from '../../../../data-source';
 
 export const setDataLoadingModeSettingsItem = {
   name: 'setDataLoadingMode',
@@ -31,14 +30,14 @@ export function SetDataLoadingMode() {
   const { t } = useTranslation();
   const field = useField();
   const fieldSchema = useFieldSchema();
-  const { name } = useCollection_deprecated();
-  const { getEnableFieldTree, getOnLoadData } = useCollectionState(name);
-  const request = useDataBlockRequest();
+  const cm = useCollection();
+  const { getEnableFieldTree, getOnLoadData } = useCollectionState(cm?.name);
+  const { getDataBlockRequest } = useDataBlockRequestGetter();
 
   return (
     <SchemaSettingsModalItem
       title={t('Set data loading mode')}
-      scope={{ getEnableFieldTree, name, getOnLoadData }}
+      scope={{ getEnableFieldTree, name: cm?.name, getOnLoadData }}
       schema={
         {
           type: 'object',
@@ -49,14 +48,15 @@ export function SetDataLoadingMode() {
               'x-component': 'Radio.Group',
               default: fieldSchema['x-decorator-props']?.dataLoadingMode || 'auto',
               enum: [
-                { value: 'auto', label: t('Automatically load data') },
-                { value: 'manual', label: t('Load data after filtering') },
+                { value: 'auto', label: t('Load all data when filter is empty') },
+                { value: 'manual', label: t('Do not load data when filter is empty') },
               ],
             },
           },
         } as ISchema
       }
       onSubmit={({ dataLoadingMode }) => {
+        const request = getDataBlockRequest();
         _.set(fieldSchema, 'x-decorator-props.dataLoadingMode', dataLoadingMode);
         field.decoratorProps.dataLoadingMode = dataLoadingMode;
         dn.emit('patch', {

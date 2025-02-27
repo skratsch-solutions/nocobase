@@ -8,7 +8,7 @@
  */
 
 import { ArrayTable } from '@formily/antd-v5';
-import { Field, onFieldValueChange } from '@formily/core';
+import { onFieldValueChange } from '@formily/core';
 import { ISchema, useField, useFieldSchema, useForm, useFormEffects } from '@formily/react';
 import { isValid, uid } from '@formily/shared';
 import { Alert, Flex, ModalProps, Tag } from 'antd';
@@ -28,6 +28,7 @@ import {
 import { DataSourceProvider, useDataSourceKey } from '../../../data-source';
 import { FlagProvider } from '../../../flag-provider';
 import { SaveMode } from '../../../modules/actions/submit/createSubmitActionSettings';
+import { useOpenModeContext } from '../../../modules/popup/OpenModeProvider';
 import { SchemaSettingOpenModeSchemaItems } from '../../../schema-items';
 import { GeneralSchemaDesigner } from '../../../schema-settings/GeneralSchemaDesigner';
 import {
@@ -68,7 +69,6 @@ export function ButtonEditor(props) {
               title: t('Button title'),
               default: fieldSchema.title,
               'x-component-props': {},
-              // description: `原字段标题：${collectionField?.uiSchema?.title}`,
             },
             icon: {
               'x-decorator': 'FormItem',
@@ -77,7 +77,6 @@ export function ButtonEditor(props) {
               default: fieldSchema?.['x-component-props']?.icon,
               'x-component-props': {},
               'x-visible': !isLink,
-              // description: `原字段标题：${collectionField?.uiSchema?.title}`,
             },
             iconColor: {
               title: t('Color'),
@@ -107,17 +106,29 @@ export function ButtonEditor(props) {
         } as ISchema
       }
       onSubmit={({ title, icon, type, iconColor }) => {
+        if (field.address.toString() === fieldSchema.name) {
+          field.title = title;
+          field.componentProps.iconColor = iconColor;
+          field.componentProps.icon = icon;
+          field.componentProps.danger = type === 'danger';
+          field.componentProps.type = type || field.componentProps.type;
+        } else {
+          field.form.query(new RegExp(`.${fieldSchema.name}$`)).forEach((fieldItem) => {
+            fieldItem.title = title;
+            fieldItem.componentProps.iconColor = iconColor;
+            fieldItem.componentProps.icon = icon;
+            fieldItem.componentProps.danger = type === 'danger';
+            fieldItem.componentProps.type = type || fieldItem.componentProps.type;
+          });
+        }
+
         fieldSchema.title = title;
-        field.title = title;
-        field.componentProps.iconColor = iconColor;
-        field.componentProps.icon = icon;
-        field.componentProps.danger = type === 'danger';
-        field.componentProps.type = type || field.componentProps.type;
         fieldSchema['x-component-props'] = fieldSchema['x-component-props'] || {};
         fieldSchema['x-component-props'].iconColor = iconColor;
         fieldSchema['x-component-props'].icon = icon;
         fieldSchema['x-component-props'].danger = type === 'danger';
         fieldSchema['x-component-props'].type = type || field.componentProps.type;
+
         dn.emit('patch', {
           schema: {
             ['x-uid']: fieldSchema['x-uid'],
@@ -250,14 +261,28 @@ export function SkipValidation() {
     />
   );
 }
+
 export function AfterSuccess() {
   const { dn } = useDesignable();
   const { t } = useTranslation();
   const fieldSchema = useFieldSchema();
+  const { onSuccess } = fieldSchema?.['x-action-settings'] || {};
   return (
     <SchemaSettingsModalItem
       title={t('After successful submission')}
-      initialValues={fieldSchema?.['x-action-settings']?.['onSuccess']}
+      initialValues={
+        onSuccess
+          ? {
+              actionAfterSuccess: onSuccess?.redirecting ? 'redirect' : 'previous',
+              ...onSuccess,
+            }
+          : {
+              manualClose: false,
+              redirecting: false,
+              successMessage: '{{t("Saved successfully")}}',
+              actionAfterSuccess: 'previous',
+            }
+      }
       schema={
         {
           type: 'object',
@@ -270,7 +295,7 @@ export function AfterSuccess() {
               'x-component-props': {},
             },
             manualClose: {
-              title: t('Popup close method'),
+              title: t('Message popup close method'),
               enum: [
                 { label: t('Automatic close'), value: false },
                 { label: t('Manually close'), value: true },
@@ -281,6 +306,7 @@ export function AfterSuccess() {
             },
             redirecting: {
               title: t('Then'),
+              'x-hidden': true,
               enum: [
                 { label: t('Stay on current page'), value: false },
                 { label: t('Redirect to'), value: true },
@@ -293,6 +319,25 @@ export function AfterSuccess() {
                 fulfill: {
                   state: {
                     visible: '{{!!$self.value}}',
+                  },
+                },
+              },
+            },
+            actionAfterSuccess: {
+              title: t('Action after successful submission'),
+              enum: [
+                { label: t('Stay on the current popup or page'), value: 'stay' },
+                { label: t('Return to the previous popup or page'), value: 'previous' },
+                { label: t('Redirect to'), value: 'redirect' },
+              ],
+              'x-decorator': 'FormItem',
+              'x-component': 'Radio.Group',
+              'x-component-props': {},
+              'x-reactions': {
+                target: 'redirectTo',
+                fulfill: {
+                  state: {
+                    visible: "{{$self.value==='redirect'}}",
                   },
                 },
               },
@@ -321,6 +366,7 @@ export function AfterSuccess() {
 export function RemoveButton(
   props: {
     onConfirmOk?: ModalProps['onOk'];
+    disabled?: boolean;
   } = {},
 ) {
   const { t } = useTranslation();
@@ -335,6 +381,7 @@ export function RemoveButton(
           breakRemoveOn={(s) => {
             return s['x-component'] === 'Space' || s['x-component'].endsWith('ActionBar');
           }}
+          disabled={props.disabled}
           confirm={{
             title: t('Delete action'),
             onOk: props.onConfirmOk,
@@ -356,15 +403,15 @@ function WorkflowSelect({ formAction, buttonAction, actionType, ...props }) {
   const compile = useCompile();
 
   const workflowPlugin = usePlugin('workflow') as any;
+  const triggerOptions = workflowPlugin.useTriggersOptions();
   const workflowTypes = useMemo(
     () =>
-      workflowPlugin
-        .getTriggersOptions()
+      triggerOptions
         .filter((item) => {
           return typeof item.options.isActionTriggerable === 'function' || item.options.isActionTriggerable === true;
         })
         .map((item) => item.value),
-    [workflowPlugin],
+    [triggerOptions],
   );
 
   useFormEffects(() => {
@@ -432,7 +479,7 @@ function WorkflowSelect({ formAction, buttonAction, actionType, ...props }) {
         }}
         optionFilter={optionFilter}
         optionRender={({ label, data }) => {
-          const typeOption = workflowPlugin.getTriggersOptions().find((item) => item.value === data.type);
+          const typeOption = triggerOptions.find((item) => item.value === data.type);
           return typeOption ? (
             <Flex justify="space-between">
               <span>{label}</span>
@@ -463,20 +510,17 @@ export function WorkflowConfig() {
   const buttonAction = fieldSchema['x-action'];
 
   const description = {
-    submit: t(
-      'Workflow will be triggered before or after submitting succeeded based on workflow type (supports pre/post action event in local mode, and approval event).',
-      {
-        ns: 'workflow',
-      },
-    ),
+    submit: t('Support pre-action event (local mode), post-action event (local mode), and approval event here.', {
+      ns: 'workflow',
+    }),
     'customize:save': t(
-      'Workflow will be triggered before or after submitting succeeded based on workflow type (supports pre/post action event in local mode, and approval event).',
+      'Support pre-action event (local mode), post-action event (local mode), and approval event here.',
       {
         ns: 'workflow',
       },
     ),
     'customize:update': t(
-      'Workflow will be triggered before or after submitting succeeded based on workflow type (supports pre/post action event in local mode, and approval event).',
+      'Support pre-action event (local mode), post-action event (local mode), and approval event here.',
       { ns: 'workflow' },
     ),
     'customize:triggerWorkflows': t(
@@ -527,6 +571,17 @@ export function WorkflowConfig() {
               items: {
                 type: 'object',
                 properties: {
+                  sort: {
+                    type: 'void',
+                    'x-component': 'ArrayTable.Column',
+                    'x-component-props': { width: 50, title: '', align: 'center' },
+                    properties: {
+                      sort: {
+                        type: 'void',
+                        'x-component': 'ArrayTable.SortHandle',
+                      },
+                    },
+                  },
                   context: {
                     type: 'void',
                     'x-component': 'ArrayTable.Column',
@@ -654,6 +709,7 @@ export const actionSettingsItems: SchemaSettingOptions['items'] = [
         name: 'openMode',
         Component: SchemaSettingOpenModeSchemaItems,
         useComponentProps() {
+          const { hideOpenMode } = useOpenModeContext();
           const fieldSchema = useFieldSchema();
           const isPopupAction = [
             'create',
@@ -665,8 +721,8 @@ export const actionSettingsItems: SchemaSettingOptions['items'] = [
           ].includes(fieldSchema['x-action'] || '');
 
           return {
-            openMode: isPopupAction,
-            openSize: isPopupAction,
+            openMode: isPopupAction && !hideOpenMode,
+            openSize: isPopupAction && !hideOpenMode,
           };
         },
       },
@@ -683,7 +739,7 @@ export const actionSettingsItems: SchemaSettingOptions['items'] = [
             'duplicate',
             'customize:create',
           ].includes(fieldSchema['x-action'] || '');
-          return !isPopupAction;
+          return !isPopupAction && !fieldSchema?.['x-action-settings']?.disableSecondConFirm;
         },
       },
       {
@@ -815,34 +871,80 @@ export function SecondConFirm() {
   const { dn } = useDesignable();
   const fieldSchema = useFieldSchema();
   const { t } = useTranslation();
-  const field = useField<Field>();
+  const field = useField();
+  const compile = useCompile();
 
   return (
-    <SchemaSettingsSwitchItem
+    <SchemaSettingsModalItem
       title={t('Secondary confirmation')}
-      checked={!!fieldSchema?.['x-component-props']?.confirm?.content}
-      onChange={(value) => {
-        if (!fieldSchema['x-component-props']) {
-          fieldSchema['x-component-props'] = {};
-        }
-        if (value) {
-          fieldSchema['x-component-props'].confirm = value
-            ? {
-                title: 'Perform the {{title}}',
-                content: 'Are you sure you want to perform the {{title}} action?',
-              }
-            : {};
-        } else {
-          fieldSchema['x-component-props'].confirm = {};
-        }
-        field.componentProps.confirm = { ...fieldSchema['x-component-props']?.confirm };
+      initialValues={{
+        title:
+          compile(fieldSchema?.['x-component-props']?.confirm?.title) ||
+          t('Perform the {{title}}', { title: compile(fieldSchema.title) }),
+        content:
+          compile(fieldSchema?.['x-component-props']?.confirm?.content) ||
+          t('Are you sure you want to perform the {{title}} action?', { title: compile(fieldSchema.title) }),
+      }}
+      schema={
+        {
+          type: 'object',
+          title: t('Secondary confirmation'),
+          properties: {
+            enable: {
+              'x-decorator': 'FormItem',
+              'x-component': 'Checkbox',
+              'x-content': t('Enable secondary confirmation'),
+              default:
+                fieldSchema?.['x-component-props']?.confirm?.enable !== false &&
+                !!fieldSchema?.['x-component-props']?.confirm?.content,
+              'x-component-props': {},
+            },
+            title: {
+              'x-decorator': 'FormItem',
+              'x-component': 'Input.TextArea',
+              title: t('Title'),
 
+              'x-reactions': {
+                dependencies: ['enable'],
+                fulfill: {
+                  state: {
+                    required: '{{$deps[0]}}',
+                  },
+                },
+              },
+            },
+            content: {
+              'x-decorator': 'FormItem',
+              'x-component': 'Input.TextArea',
+              title: t('Content'),
+              'x-reactions': {
+                dependencies: ['enable'],
+                fulfill: {
+                  state: {
+                    required: '{{$deps[0]}}',
+                  },
+                },
+              },
+            },
+          },
+        } as ISchema
+      }
+      onSubmit={({ enable, title, content }) => {
+        fieldSchema['x-component-props'] = fieldSchema['x-component-props'] || {};
+        fieldSchema['x-component-props'].confirm = {};
+        fieldSchema['x-component-props'].confirm.enable = enable;
+        fieldSchema['x-component-props'].confirm.title = title;
+        fieldSchema['x-component-props'].confirm.content = content;
+        field.componentProps.confirm = { ...fieldSchema['x-component-props']?.confirm };
         dn.emit('patch', {
           schema: {
             ['x-uid']: fieldSchema['x-uid'],
-            'x-component-props': { ...fieldSchema['x-component-props'] },
+            'x-component-props': {
+              ...fieldSchema['x-component-props'],
+            },
           },
         });
+        dn.refresh();
       }}
     />
   );
@@ -864,11 +966,12 @@ export const ActionDesigner = (props) => {
     buttonEditorProps,
     linkageRulesProps,
     schemaSettings = 'ActionSettings',
+    enableDrag = true,
     ...restProps
   } = props;
   const app = useApp();
   const fieldSchema = useFieldSchema();
-  const isDraggable = fieldSchema?.parent['x-component'] !== 'CollectionField';
+  const isDraggable = fieldSchema?.parent['x-component'] !== 'CollectionField' && enableDrag;
   const settingsName = `ActionSettings:${fieldSchema['x-action']}`;
   const defaultActionSettings = schemaSettings || 'ActionSettings';
   const hasAction = app.schemaSettingsManager.has(settingsName);

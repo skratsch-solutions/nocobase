@@ -12,6 +12,7 @@ import { TemplateCreator } from '../services/template-creator';
 import { XlsxImporter } from '../services/xlsx-importer';
 import XLSX from 'xlsx';
 import * as process from 'node:process';
+import moment from 'moment';
 
 describe('xlsx importer', () => {
   let app: MockServer;
@@ -23,6 +24,321 @@ describe('xlsx importer', () => {
 
   afterEach(async () => {
     await app.destroy();
+  });
+
+  describe('validate empty data', () => {
+    let User;
+
+    beforeEach(async () => {
+      User = app.db.collection({
+        name: 'users',
+        fields: [
+          {
+            type: 'string',
+            name: 'name',
+          },
+        ],
+      });
+      await app.db.sync();
+    });
+
+    it('should throw error when file only has header row', async () => {
+      const templateCreator = new TemplateCreator({
+        collection: User,
+        columns: [
+          {
+            dataIndex: ['name'],
+            defaultTitle: 'Name',
+          },
+        ],
+      });
+
+      const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
+      // template already has header row, no need to add data
+
+      const importer = new XlsxImporter({
+        collectionManager: app.mainDataSource.collectionManager,
+        collection: User,
+        columns: [
+          {
+            dataIndex: ['name'],
+            defaultTitle: 'Name',
+          },
+        ],
+        workbook: template,
+      });
+
+      await expect(importer.validate()).rejects.toThrow('No data to import');
+    });
+
+    it('should pass validation when file has header and data rows', async () => {
+      const templateCreator = new TemplateCreator({
+        collection: User,
+        columns: [
+          {
+            dataIndex: ['name'],
+            defaultTitle: 'Name',
+          },
+        ],
+      });
+
+      const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
+      const worksheet = template.Sheets[template.SheetNames[0]];
+
+      XLSX.utils.sheet_add_aoa(worksheet, [['Test Data 1'], ['Test Data 2']], {
+        origin: 'A2',
+      });
+
+      const importer = new XlsxImporter({
+        collectionManager: app.mainDataSource.collectionManager,
+        collection: User,
+        columns: [
+          {
+            dataIndex: ['name'],
+            defaultTitle: 'Name',
+          },
+        ],
+        workbook: template,
+      });
+
+      let error;
+
+      try {
+        await importer.validate();
+      } catch (e) {
+        error = e;
+      }
+
+      expect(error).toBeUndefined();
+    });
+  });
+
+  describe('import with date field', () => {
+    let User;
+
+    beforeEach(async () => {
+      User = app.db.collection({
+        name: 'users',
+        fields: [
+          {
+            type: 'string',
+            name: 'name',
+          },
+          {
+            type: 'datetime',
+            name: 'datetime',
+            interface: 'datetime',
+          },
+          {
+            type: 'datetimeNoTz',
+            name: 'datetimeNoTz',
+            interface: 'datetimeNoTz',
+            uiSchema: {
+              'x-component-props': {
+                picker: 'date',
+                dateFormat: 'YYYY-MM-DD',
+                showTime: true,
+                timeFormat: 'HH:mm:ss',
+              },
+            },
+          },
+          {
+            type: 'dateOnly',
+            name: 'dateOnly',
+            interface: 'date',
+          },
+          {
+            type: 'unixTimestamp',
+            name: 'unixTimestamp',
+            interface: 'unixTimestamp',
+            uiSchema: {
+              'x-component-props': {
+                picker: 'date',
+                dateFormat: 'YYYY-MM-DD',
+                showTime: true,
+                timeFormat: 'HH:mm:ss',
+              },
+            },
+          },
+        ],
+      });
+
+      await app.db.sync();
+    });
+
+    it('should import with dateOnly', async () => {
+      const columns = [
+        {
+          dataIndex: ['name'],
+          defaultTitle: '姓名',
+        },
+        {
+          dataIndex: ['dateOnly'],
+          defaultTitle: '日期',
+        },
+      ];
+
+      const templateCreator = new TemplateCreator({
+        collection: User,
+        columns,
+      });
+
+      const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
+
+      const worksheet = template.Sheets[template.SheetNames[0]];
+
+      XLSX.utils.sheet_add_aoa(
+        worksheet,
+        [
+          ['test', 77383],
+          ['test2', '2021-10-18'],
+          ['test3', 20241112],
+        ],
+        { origin: 'A2' },
+      );
+
+      const importer = new XlsxImporter({
+        collectionManager: app.mainDataSource.collectionManager,
+        collection: User,
+        columns,
+        workbook: template,
+      });
+
+      await importer.run();
+
+      const users = (await User.repository.find()).map((user) => user.toJSON());
+      expect(users[0]['dateOnly']).toBe('2111-11-12');
+      expect(users[1]['dateOnly']).toBe('2021-10-18');
+      expect(users[2]['dateOnly']).toBe('2024-11-12');
+    });
+
+    it.skipIf(process.env['DB_DIALECT'] === 'sqlite')('should import with datetimeNoTz', async () => {
+      const columns = [
+        {
+          dataIndex: ['name'],
+          defaultTitle: '姓名',
+        },
+        {
+          dataIndex: ['datetimeNoTz'],
+          defaultTitle: '日期',
+        },
+      ];
+
+      const templateCreator = new TemplateCreator({
+        collection: User,
+        columns,
+      });
+
+      const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
+
+      const worksheet = template.Sheets[template.SheetNames[0]];
+
+      XLSX.utils.sheet_add_aoa(
+        worksheet,
+        [
+          ['test', 77383],
+          ['test2', '2021-10-18 12:31:20'],
+          ['test3', 41557.4377314815],
+        ],
+        { origin: 'A2' },
+      );
+
+      const importer = new XlsxImporter({
+        collectionManager: app.mainDataSource.collectionManager,
+        collection: User,
+        columns,
+        workbook: template,
+      });
+
+      await importer.run();
+
+      const users = (await User.repository.find()).map((user) => user.toJSON());
+      expect(users[0]['datetimeNoTz']).toBe('2111-11-12 00:00:00');
+      expect(users[1]['datetimeNoTz']).toBe('2021-10-18 12:31:20');
+      expect(users[2]['datetimeNoTz']).toBe('2013-10-10 10:30:20');
+    });
+
+    it('should import with unixTimestamp', async () => {
+      const columns = [
+        {
+          dataIndex: ['name'],
+          defaultTitle: '姓名',
+        },
+        {
+          dataIndex: ['unixTimestamp'],
+          defaultTitle: '日期',
+        },
+      ];
+
+      const templateCreator = new TemplateCreator({
+        collection: User,
+        columns,
+      });
+
+      const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
+
+      const worksheet = template.Sheets[template.SheetNames[0]];
+
+      XLSX.utils.sheet_add_aoa(
+        worksheet,
+        [
+          ['test', 77383],
+          ['test2', 20241112],
+          ['test3', '2024-11-12'],
+        ],
+        { origin: 'A2' },
+      );
+
+      const importer = new XlsxImporter({
+        collectionManager: app.mainDataSource.collectionManager,
+        collection: User,
+        columns,
+        workbook: template,
+      });
+
+      await importer.run();
+
+      const users = (await User.repository.find()).map((user) => user.toJSON());
+      expect(moment(users[0]['unixTimestamp']).toISOString()).toEqual('2111-11-12T00:00:00.000Z');
+      expect(moment(users[1]['unixTimestamp'])).toBeDefined();
+      expect(moment(users[2]['unixTimestamp'])).toBeDefined();
+    });
+
+    it('should import with datetimeTz', async () => {
+      const columns = [
+        {
+          dataIndex: ['name'],
+          defaultTitle: '姓名',
+        },
+        {
+          dataIndex: ['datetime'],
+          defaultTitle: '日期',
+        },
+      ];
+
+      const templateCreator = new TemplateCreator({
+        collection: User,
+        columns,
+      });
+
+      const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
+
+      const worksheet = template.Sheets[template.SheetNames[0]];
+
+      XLSX.utils.sheet_add_aoa(worksheet, [['test', 77383]], { origin: 'A2' });
+
+      const importer = new XlsxImporter({
+        collectionManager: app.mainDataSource.collectionManager,
+        collection: User,
+        columns,
+        workbook: template,
+      });
+
+      await importer.run();
+
+      const users = (await User.repository.find()).map((user) => user.toJSON());
+      expect(moment(users[0]['datetime']).toISOString()).toEqual('2111-11-12T00:00:00.000Z');
+    });
   });
 
   describe('import with select fields', () => {
@@ -107,7 +423,7 @@ describe('xlsx importer', () => {
         columns,
       });
 
-      const template = await templateCreator.run();
+      const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
 
       const worksheet = template.Sheets[template.SheetNames[0]];
 
@@ -149,7 +465,7 @@ describe('xlsx importer', () => {
         columns,
       });
 
-      const template = await templateCreator.run();
+      const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
 
       const worksheet = template.Sheets[template.SheetNames[0]];
 
@@ -191,7 +507,7 @@ describe('xlsx importer', () => {
         columns,
       });
 
-      const template = await templateCreator.run();
+      const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
 
       const worksheet = template.Sheets[template.SheetNames[0]];
 
@@ -218,9 +534,156 @@ describe('xlsx importer', () => {
     });
   });
 
+  describe('import with belongs to association', async () => {
+    let Profile;
+    let User;
+
+    beforeEach(async () => {
+      Profile = app.db.collection({
+        name: 'profiles',
+        autoGenId: false,
+        fields: [
+          {
+            type: 'bigInt',
+            name: 'id',
+            primaryKey: true,
+            autoIncrement: true,
+          },
+          {
+            type: 'string',
+            name: 'name',
+          },
+          {
+            type: 'string',
+            name: 'userName',
+          },
+          {
+            type: 'belongsTo',
+            name: 'user',
+            target: 'users',
+            foreignKey: 'userName',
+            targetKey: 'name',
+          },
+        ],
+      });
+
+      User = app.db.collection({
+        name: 'users',
+        autoGenId: false,
+        fields: [
+          {
+            type: 'bigInt',
+            name: 'id',
+            primaryKey: true,
+            autoIncrement: true,
+          },
+          {
+            type: 'string',
+            name: 'name',
+            unique: true,
+          },
+        ],
+      });
+
+      await app.db.sync();
+
+      const user = await User.repository.create({
+        values: {
+          name: 'User1',
+        },
+      });
+    });
+
+    it('should import with foreignKey', async () => {
+      const columns = [
+        {
+          dataIndex: ['name'],
+          defaultTitle: '名称',
+        },
+        {
+          dataIndex: ['userName'],
+          defaultTitle: '用户名',
+        },
+      ];
+
+      const templateCreator = new TemplateCreator({
+        collection: Profile,
+        columns,
+      });
+
+      const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
+
+      const worksheet = template.Sheets[template.SheetNames[0]];
+
+      XLSX.utils.sheet_add_aoa(worksheet, [['test', 'User1']], {
+        origin: 'A2',
+      });
+
+      const importer = new XlsxImporter({
+        collectionManager: app.mainDataSource.collectionManager,
+        collection: Profile,
+        columns,
+        workbook: template,
+      });
+
+      await importer.run();
+
+      const profile = await Profile.repository.findOne({
+        appends: ['user'],
+      });
+
+      expect(profile.get('user').get('name')).toBe('User1');
+      expect(profile.get('name')).toBe('test');
+    });
+
+    it('should import with association field', async () => {
+      const columns = [
+        {
+          dataIndex: ['name'],
+          defaultTitle: '名称',
+        },
+        {
+          dataIndex: ['user', 'name'],
+          defaultTitle: '用户名',
+        },
+      ];
+
+      const templateCreator = new TemplateCreator({
+        collection: Profile,
+        columns,
+      });
+
+      const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
+
+      const worksheet = template.Sheets[template.SheetNames[0]];
+
+      XLSX.utils.sheet_add_aoa(worksheet, [['test', 'User1']], {
+        origin: 'A2',
+      });
+
+      const importer = new XlsxImporter({
+        collectionManager: app.mainDataSource.collectionManager,
+        collection: Profile,
+        columns,
+        workbook: template,
+      });
+
+      await importer.run();
+
+      const profile = await Profile.repository.findOne({
+        appends: ['user'],
+      });
+
+      expect(profile.get('user').get('name')).toBe('User1');
+      expect(profile.get('name')).toBe('test');
+    });
+  });
+
   describe('import with associations', () => {
     let User;
     let Post;
+    let Tag;
+
     beforeEach(async () => {
       User = app.db.collection({
         name: 'users',
@@ -252,10 +715,96 @@ describe('xlsx importer', () => {
             target: 'users',
             interface: 'm2o',
           },
+          {
+            type: 'belongsToMany',
+            name: 'tags',
+            target: 'tags',
+            interface: 'm2m',
+            through: 'postsTags',
+          },
+        ],
+      });
+
+      Tag = app.db.collection({
+        name: 'tags',
+        fields: [
+          {
+            type: 'string',
+            name: 'name',
+          },
+          {
+            type: 'belongsToMany',
+            name: 'posts',
+            target: 'posts',
+            interface: 'm2m',
+            through: 'postsTags',
+          },
         ],
       });
 
       await app.db.sync();
+    });
+
+    it('should import many to many with id', async () => {
+      await Tag.repository.create({
+        values: [
+          {
+            title: 't1',
+          },
+          {
+            title: 't2',
+          },
+        ],
+      });
+
+      const columns = [
+        {
+          dataIndex: ['title'],
+          defaultTitle: '名称',
+        },
+        {
+          dataIndex: ['tags', 'id'],
+          defaultTitle: 'IDS',
+        },
+      ];
+
+      const templateCreator = new TemplateCreator({
+        collection: Post,
+        columns,
+      });
+
+      const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
+
+      const worksheet = template.Sheets[template.SheetNames[0]];
+
+      XLSX.utils.sheet_add_aoa(
+        worksheet,
+        [
+          ['test', '1,2'],
+          ['test2', 1],
+        ],
+        {
+          origin: 'A2',
+        },
+      );
+
+      const importer = new XlsxImporter({
+        collectionManager: app.mainDataSource.collectionManager,
+        collection: Post,
+        columns,
+        workbook: template,
+      });
+
+      await importer.run();
+
+      const posts = await Post.repository.find({
+        appends: ['tags'],
+      });
+
+      expect(posts.length).toBe(2);
+
+      expect(posts[0]['tags'].map((item: any) => item.id)).toEqual([1, 2]);
+      expect(posts[1]['tags'].map((item: any) => item.id)).toEqual([1]);
     });
 
     it('should validate to many association', async () => {
@@ -275,7 +824,7 @@ describe('xlsx importer', () => {
         columns,
       });
 
-      const template = await templateCreator.run();
+      const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
 
       const worksheet = template.Sheets[template.SheetNames[0]];
 
@@ -318,7 +867,7 @@ describe('xlsx importer', () => {
         columns,
       });
 
-      const template = await templateCreator.run();
+      const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
 
       const worksheet = template.Sheets[template.SheetNames[0]];
 
@@ -377,7 +926,7 @@ describe('xlsx importer', () => {
       ],
     });
 
-    const template = await templateCreator.run();
+    const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
 
     const worksheet = template.Sheets[template.SheetNames[0]];
 
@@ -410,7 +959,6 @@ describe('xlsx importer', () => {
     }
 
     expect(error).toBeTruthy();
-    console.log(error.message);
   });
 
   it('should report validation error message on unique validation', async () => {
@@ -445,7 +993,7 @@ describe('xlsx importer', () => {
       ],
     });
 
-    const template = await templateCreator.run();
+    const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
 
     const worksheet = template.Sheets[template.SheetNames[0]];
     XLSX.utils.sheet_add_aoa(
@@ -484,7 +1032,6 @@ describe('xlsx importer', () => {
     }
 
     expect(error).toBeTruthy();
-    console.log(error.message);
   });
 
   it('should import china region field', async () => {
@@ -518,7 +1065,7 @@ describe('xlsx importer', () => {
       columns,
     });
 
-    const template = await templateCreator.run();
+    const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
 
     const worksheet = template.Sheets[template.SheetNames[0]];
 
@@ -616,7 +1163,7 @@ describe('xlsx importer', () => {
       columns,
     });
 
-    const template = await templateCreator.run();
+    const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
 
     const worksheet = template.Sheets[template.SheetNames[0]];
 
@@ -706,7 +1253,7 @@ describe('xlsx importer', () => {
       ],
     });
 
-    const template = await templateCreator.run();
+    const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
 
     const worksheet = template.Sheets[template.SheetNames[0]];
 
@@ -807,7 +1354,7 @@ describe('xlsx importer', () => {
       ],
     });
 
-    const template = await templateCreator.run();
+    const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
 
     const worksheet = template.Sheets[template.SheetNames[0]];
 
@@ -910,7 +1457,7 @@ describe('xlsx importer', () => {
 
     let error;
     try {
-      importer.getData();
+      await importer.validate();
     } catch (e) {
       error = e;
     }
@@ -947,7 +1494,7 @@ describe('xlsx importer', () => {
       ],
     });
 
-    const template = await templateCreator.run();
+    const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
 
     const importer = new XlsxImporter({
       collectionManager: app.mainDataSource.collectionManager,
@@ -965,9 +1512,15 @@ describe('xlsx importer', () => {
       workbook: template,
     });
 
+    // insert a row for test
+    const worksheet = template.Sheets[template.SheetNames[0]];
+    XLSX.utils.sheet_add_aoa(worksheet, [['User1', 'test@test.com']], {
+      origin: 'A2',
+    });
+
     let error;
     try {
-      importer.getData();
+      await importer.getData();
     } catch (e) {
       error = e;
     }
@@ -1105,7 +1658,7 @@ describe('xlsx importer', () => {
       columns: importColumns,
     });
 
-    const template = await templateCreator.run();
+    const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
 
     const worksheet = template.Sheets[template.SheetNames[0]];
 
@@ -1167,7 +1720,7 @@ describe('xlsx importer', () => {
       ],
     });
 
-    const template = await templateCreator.run();
+    const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
 
     const worksheet = template.Sheets[template.SheetNames[0]];
 
@@ -1236,7 +1789,7 @@ describe('xlsx importer', () => {
       ],
     });
 
-    const template = await templateCreator.run();
+    const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
 
     const worksheet = template.Sheets[template.SheetNames[0]];
 
@@ -1276,5 +1829,330 @@ describe('xlsx importer', () => {
 
     expect(await User.repository.count()).toBe(0);
     expect(error).toBeTruthy();
+  });
+
+  it('should import data with multiline explain and field descriptions', async () => {
+    const User = app.db.collection({
+      name: 'users',
+      fields: [
+        {
+          type: 'string',
+          name: 'name',
+        },
+        {
+          type: 'string',
+          name: 'email',
+        },
+      ],
+    });
+
+    await app.db.sync();
+
+    const templateCreator = new TemplateCreator({
+      collection: User,
+      explain: '这是第一行说明\n这是第二行说明',
+      columns: [
+        {
+          dataIndex: ['name'],
+          defaultTitle: '姓名',
+          description: '请输入用户姓名',
+        },
+        {
+          dataIndex: ['email'],
+          defaultTitle: '邮箱',
+          description: '请输入有效的邮箱地址',
+        },
+      ],
+    });
+
+    const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
+
+    const headerRowIndex = templateCreator.getHeaderRowIndex();
+
+    console.log({ headerRowIndex });
+    const worksheet = template.Sheets[template.SheetNames[0]];
+
+    XLSX.utils.sheet_add_aoa(
+      worksheet,
+      [
+        ['User1', 'test@test.com'],
+        ['User2', 'test2@test.com'],
+      ],
+      {
+        origin: `A${headerRowIndex + 1}`,
+      },
+    );
+
+    const importer = new XlsxImporter({
+      collectionManager: app.mainDataSource.collectionManager,
+      collection: User,
+      columns: [
+        {
+          dataIndex: ['name'],
+          defaultTitle: '姓名',
+          description: '请输入用户姓名',
+        },
+        {
+          dataIndex: ['email'],
+          defaultTitle: '邮箱',
+          description: '请输入有效的邮箱地址',
+        },
+      ],
+      workbook: template,
+    });
+
+    await importer.run();
+
+    expect(await User.repository.count()).toBe(2);
+
+    const users = await User.repository.find();
+    expect(users[0].get('name')).toBe('User1');
+    expect(users[0].get('email')).toBe('test@test.com');
+    expect(users[1].get('name')).toBe('User2');
+    expect(users[1].get('email')).toBe('test2@test.com');
+  });
+
+  describe('template creator', () => {
+    it('should create template with explain and field descriptions', async () => {
+      const User = app.db.collection({
+        name: 'users',
+        fields: [
+          {
+            type: 'string',
+            name: 'name',
+          },
+          {
+            type: 'string',
+            name: 'email',
+          },
+        ],
+      });
+
+      const templateCreator = new TemplateCreator({
+        collection: User,
+        explain: '这是导入说明\n第二行说明',
+        columns: [
+          {
+            dataIndex: ['name'],
+            defaultTitle: '姓名',
+            description: '请输入用户姓名',
+          },
+          {
+            dataIndex: ['email'],
+            defaultTitle: '邮箱',
+            description: '请输入有效的邮箱地址',
+          },
+        ],
+      });
+
+      const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
+      const worksheet = template.Sheets[template.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as string[][];
+
+      // 验证说明文本
+      expect(data[0][0]).toBe('这是导入说明');
+      expect(data[1][0]).toBe('第二行说明');
+      // 验证空行
+      expect(data[2][0]).toBe('');
+      // 验证字段描述
+      expect(data[3][0]).toBe('姓名：请输入用户姓名');
+      expect(data[4][0]).toBe('邮箱：请输入有效的邮箱地址');
+      // 验证表头
+      expect(data[5]).toEqual(['姓名', '邮箱']);
+    });
+
+    it('should create template with only field descriptions', async () => {
+      const User = app.db.collection({
+        name: 'users',
+        fields: [
+          {
+            type: 'string',
+            name: 'name',
+          },
+        ],
+      });
+
+      const templateCreator = new TemplateCreator({
+        collection: User,
+        columns: [
+          {
+            dataIndex: ['name'],
+            defaultTitle: '姓名',
+            description: '请输入用户姓名',
+          },
+        ],
+      });
+
+      const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
+      const worksheet = template.Sheets[template.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as string[][];
+
+      // 验证字段描述
+      expect(data[0][0]).toBe('姓名：请输入用户姓名');
+      // 验证表头
+      expect(data[1]).toEqual(['姓名']);
+    });
+
+    it('should create template with only explain', async () => {
+      const User = app.db.collection({
+        name: 'users',
+        fields: [
+          {
+            type: 'string',
+            name: 'name',
+          },
+        ],
+      });
+
+      const templateCreator = new TemplateCreator({
+        collection: User,
+        explain: '这是导入说明',
+        columns: [
+          {
+            dataIndex: ['name'],
+            defaultTitle: '姓名',
+          },
+        ],
+      });
+
+      const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
+      const worksheet = template.Sheets[template.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as string[][];
+
+      // 验证说明文本
+      expect(data[0][0]).toBe('这是导入说明');
+      // 验证表头
+      expect(data[1]).toEqual(['姓名']);
+    });
+  });
+
+  it('should import data with single column', async () => {
+    const User = app.db.collection({
+      name: 'users',
+      fields: [
+        {
+          type: 'string',
+          name: 'name',
+        },
+      ],
+    });
+
+    await app.db.sync();
+
+    const templateCreator = new TemplateCreator({
+      collection: User,
+      columns: [
+        {
+          dataIndex: ['name'],
+          defaultTitle: '姓名',
+        },
+      ],
+    });
+
+    const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
+    const worksheet = template.Sheets[template.SheetNames[0]];
+
+    XLSX.utils.sheet_add_aoa(worksheet, [['User1'], ['User2']], {
+      origin: 'A2',
+    });
+
+    const importer = new XlsxImporter({
+      collectionManager: app.mainDataSource.collectionManager,
+      collection: User,
+      columns: [
+        {
+          dataIndex: ['name'],
+          defaultTitle: '姓名',
+        },
+      ],
+      workbook: template,
+    });
+
+    await importer.run();
+
+    expect(await User.repository.count()).toBe(2);
+    const users = await User.repository.find();
+    expect(users[0].get('name')).toBe('User1');
+    expect(users[1].get('name')).toBe('User2');
+  });
+
+  it('should import with associations by target key', async () => {
+    const Post = app.db.collection({
+      name: 'posts',
+      fields: [
+        {
+          name: 'title',
+          type: 'string',
+        },
+        {
+          name: 'tags',
+          type: 'belongsToMany',
+          through: 'post_tag',
+          targetKey: 'name',
+          interface: 'm2m',
+        },
+      ],
+    });
+
+    const Tag = app.db.collection({
+      name: 'tags',
+      fields: [
+        {
+          name: 'name',
+          type: 'string',
+          unique: true,
+        },
+      ],
+    });
+
+    await app.db.sync();
+
+    await Tag.repository.create({
+      values: {
+        name: 't1',
+      },
+    });
+
+    const templateCreator = new TemplateCreator({
+      collection: Post,
+      columns: [
+        {
+          dataIndex: ['title'],
+          defaultTitle: '标题',
+        },
+        {
+          dataIndex: ['tags', 'name'],
+          defaultTitle: 'TagsName',
+        },
+      ],
+    });
+
+    const template = (await templateCreator.run({ returnXLSXWorkbook: true })) as XLSX.WorkBook;
+
+    const worksheet = template.Sheets[template.SheetNames[0]];
+
+    XLSX.utils.sheet_add_aoa(worksheet, [['Post1', 't1']], {
+      origin: 'A2',
+    });
+
+    const importer = new XlsxImporter({
+      collectionManager: app.mainDataSource.collectionManager,
+      collection: Post,
+      columns: [
+        {
+          dataIndex: ['title'],
+          defaultTitle: '标题',
+        },
+        {
+          dataIndex: ['tags', 'name'],
+          defaultTitle: 'TagsName',
+        },
+      ],
+      workbook: template,
+    });
+
+    await importer.run();
+
+    expect(await Post.repository.count()).toBe(1);
   });
 });

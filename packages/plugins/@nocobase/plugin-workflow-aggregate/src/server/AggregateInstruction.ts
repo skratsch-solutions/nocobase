@@ -25,6 +25,10 @@ export default class extends Instruction {
     const options = processor.getParsedValue(params, node.id);
     const [dataSourceName, collectionName] = parseCollectionName(collection);
     const { collectionManager } = this.workflow.app.dataSourceManager.dataSources.get(dataSourceName);
+    // @ts-ignore
+    if (!collectionManager.db) {
+      throw new Error('aggregate instruction can only work with data source of type database');
+    }
     const repo = associated
       ? collectionManager.getRepository(
           `${association?.associatedCollection}.${association.name}`,
@@ -39,7 +43,7 @@ export default class extends Instruction {
     const result = await repo.aggregate({
       ...options,
       method: aggregators[aggregator],
-      // transaction: processor.transaction,
+      transaction: this.workflow.useDataSourceTransaction(dataSourceName, processor.transaction),
     });
 
     return {

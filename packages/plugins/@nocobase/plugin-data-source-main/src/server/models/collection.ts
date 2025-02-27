@@ -26,10 +26,23 @@ export class CollectionModel extends MagicAttributeModel {
 
   toJSON() {
     const json = super.toJSON();
+
+    const collection = this.db.getCollection(json.name);
+
     if (!json.filterTargetKey) {
-      const collection = this.db.getCollection(json.name);
       json.filterTargetKey = collection?.filterTargetKey;
     }
+
+    if (collection && collection.unavailableActions) {
+      json['unavailableActions'] = collection.unavailableActions();
+    }
+
+    // @ts-ignore
+    if (collection && collection.availableActions) {
+      // @ts-ignore
+      json['availableActions'] = collection.availableActions();
+    }
+
     return json;
   }
 
@@ -48,6 +61,10 @@ export class CollectionModel extends MagicAttributeModel {
 
     if (!this.db.inDialect('postgres') && collectionOptions.schema) {
       delete collectionOptions.schema;
+    }
+
+    if (this.db.inDialect('postgres') && !collectionOptions.schema && collectionOptions.from !== 'db2cm') {
+      collectionOptions.schema = process.env.COLLECTION_MANAGER_SCHEMA || this.db.options.schema || 'public';
     }
 
     if (this.db.hasCollection(name)) {

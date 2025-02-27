@@ -23,7 +23,7 @@ import { useCompile } from '../../schema-component';
 import { useSchemaTemplateManager } from '../../schema-templates';
 import { useCollectionDataSourceItems } from '../utils';
 
-const MENU_ITEM_HEIGHT = 40;
+const MENU_ITEM_HEIGHT = 32;
 const STEP = 15;
 
 export const SearchCollections = ({ value: outValue, onChange }) => {
@@ -306,6 +306,7 @@ export interface DataBlockInitializerProps {
   /** 用于更改 Other records 的文案 */
   otherText?: string;
   children?: React.ReactNode;
+  alwaysRenderMenu?: boolean; //总是渲染为 SchemaInitializerMenu
 }
 
 export const DataBlockInitializer: FC<DataBlockInitializerProps> = (props) => {
@@ -328,6 +329,7 @@ export const DataBlockInitializer: FC<DataBlockInitializerProps> = (props) => {
     filterOtherRecordsCollection,
     currentText,
     otherText,
+    alwaysRenderMenu,
   } = props;
   const { insert, setVisible } = useSchemaInitializer();
   const compile = useCompile();
@@ -398,7 +400,7 @@ export const DataBlockInitializer: FC<DataBlockInitializerProps> = (props) => {
     ];
   }, [searchedChildren, hideChildrenIfSingleCollection, name, compile, title, icon, onClick, props]);
 
-  if (childItems.length > 1 || (childItems.length === 1 && childItems[0].children?.length > 0)) {
+  if (childItems.length > 1 || (childItems.length === 1 && childItems[0]?.children?.length > 0) || alwaysRenderMenu) {
     return (
       <SchemaInitializerMenu
         onOpenChange={(keys) => {

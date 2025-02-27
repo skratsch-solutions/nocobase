@@ -7,7 +7,7 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
-import { OrderedListOutlined } from '@ant-design/icons';
+import { AppstoreOutlined } from '@ant-design/icons';
 import React from 'react';
 import { useSchemaInitializer, useSchemaInitializerItem } from '../../../../application';
 import { useCollectionManager_deprecated } from '../../../../collection-manager';
@@ -48,8 +48,8 @@ export const GridCardBlockInitializer = ({
   return (
     <DataBlockInitializer
       {...itemConfig}
-      icon={<OrderedListOutlined />}
-      componentType={'GridCard'}
+      icon={<AppstoreOutlined />}
+      componentType={`GridCard`}
       onCreateBlockSchema={async (options) => {
         if (createBlockSchema) {
           return createBlockSchema(options);

@@ -16,7 +16,7 @@ import { SchemaSettings } from '../../../../application/schema-settings/SchemaSe
 import { useFormBlockContext } from '../../../../block-provider/FormBlockProvider';
 import { useCollectionManager_deprecated, useCollection_deprecated } from '../../../../collection-manager';
 import { useFieldComponentName } from '../../../../common/useFieldComponentName';
-import { useCollectionField } from '../../../../data-source';
+import { useCollectionField, useDataBlockProps } from '../../../../data-source';
 import { useRecord } from '../../../../record-provider';
 import { removeNullCondition, useDesignable, useFieldModeOptions, useIsAddNewForm } from '../../../../schema-component';
 import { isSubMode } from '../../../../schema-component/antd/association-field/util';
@@ -33,6 +33,8 @@ import { SchemaSettingsDataScope } from '../../../../schema-settings/SchemaSetti
 import { SchemaSettingsSortingRule } from '../../../../schema-settings/SchemaSettingsSortingRule';
 import { useIsShowMultipleSwitch } from '../../../../schema-settings/hooks/useIsShowMultipleSwitch';
 import { useLocalVariables, useVariables } from '../../../../variables';
+import { useOpenModeContext } from '../../../popup/OpenModeProvider';
+import { ellipsisSettingsItem, enableLinkSettingsItem, openModeSettingsItem } from '../Input/inputComponentSettings';
 
 const enableLink = {
   name: 'enableLink',
@@ -65,13 +67,12 @@ const enableLink = {
             },
           },
         });
-        dn.refresh();
       },
     };
   },
 };
 
-const titleField: any = {
+export const titleField: any = {
   name: 'titleField',
   type: 'select',
   useComponentProps() {
@@ -119,49 +120,49 @@ const titleField: any = {
   },
 };
 
-export const allowMultiple: any = {
-  name: 'allowMultiple',
-  type: 'switch',
-  useVisible() {
-    const isFieldReadPretty = useIsFieldReadPretty();
-    const collectionField = useCollectionField();
-    return !isFieldReadPretty && ['hasMany', 'belongsToMany'].includes(collectionField?.type);
-  },
-  useComponentProps() {
-    const { t } = useTranslation();
-    const field = useField<Field>();
-    const { fieldSchema: tableColumnSchema } = useColumnSchema();
-    const schema = useFieldSchema();
-    const fieldSchema = tableColumnSchema || schema;
-    const { dn, refresh } = useDesignable();
-    return {
-      title: t('Allow multiple'),
-      checked:
-        fieldSchema['x-component-props']?.multiple === undefined ? true : fieldSchema['x-component-props'].multiple,
-      onChange(value) {
-        const schema = {
-          ['x-uid']: fieldSchema['x-uid'],
-        };
-        fieldSchema['x-component-props'] = fieldSchema['x-component-props'] || {};
-        field.componentProps = field.componentProps || {};
+export const getAllowMultiple = (params?: { title: string }) => {
+  const title = params?.title || 'Allow multiple';
 
-        fieldSchema['x-component-props'].multiple = value;
-        field.componentProps.multiple = value;
+  return {
+    name: 'allowMultiple',
+    type: 'switch',
+    useComponentProps() {
+      const { t } = useTranslation();
+      const field = useField<Field>();
+      const { fieldSchema: tableColumnSchema } = useColumnSchema();
+      const schema = useFieldSchema();
+      const fieldSchema = tableColumnSchema || schema;
+      const { dn, refresh } = useDesignable();
+      return {
+        title: t(title),
+        checked:
+          fieldSchema['x-component-props']?.multiple === undefined ? true : fieldSchema['x-component-props'].multiple,
+        onChange(value) {
+          const schema = {
+            ['x-uid']: fieldSchema['x-uid'],
+          };
+          fieldSchema['x-component-props'] = fieldSchema['x-component-props'] || {};
+          field.componentProps = field.componentProps || {};
 
-        schema['x-component-props'] = fieldSchema['x-component-props'];
-        dn.emit('patch', {
-          schema,
-        });
-        refresh();
-      },
-    };
-  },
+          fieldSchema['x-component-props'].multiple = value;
+          field.componentProps.multiple = value;
+
+          schema['x-component-props'] = fieldSchema['x-component-props'];
+          dn.emit('patch', {
+            schema,
+          });
+          refresh();
+        },
+      };
+    },
+  };
 };
 
 const quickCreate: any = {
   name: 'quickCreate',
   type: 'select',
   useComponentProps() {
+    const { defaultOpenMode } = useOpenModeContext();
     const { t } = useTranslation();
     const field = useField<Field>();
     const fieldSchema = useFieldSchema();
@@ -190,11 +191,14 @@ const quickCreate: any = {
               title: "{{t('Add new')}}",
               // 'x-designer': 'Action.Designer',
               'x-toolbar': 'ActionSchemaToolbar',
+              'x-toolbar-props': {
+                draggable: false,
+              },
               'x-settings': 'actionSettings:addNew',
               'x-component': 'Action',
               'x-decorator': 'ACLActionProvider',
               'x-component-props': {
-                openMode: 'drawer',
+                openMode: defaultOpenMode,
                 type: 'default',
                 component: 'CreateRecordAction',
               },
@@ -356,17 +360,90 @@ export const selectComponentFieldSettings = new SchemaSettings({
         const isAssociationField = useIsAssociationField();
         const readPretty = useIsFieldReadPretty();
         const { fieldSchema } = useColumnSchema();
-        return isAssociationField && !fieldSchema && !readPretty;
+        const { type } = useDataBlockProps() || ({} as any);
+        return isAssociationField && !fieldSchema && !readPretty && type !== 'publicForm';
       },
     },
     {
-      ...allowMultiple,
+      ...getAllowMultiple(),
       useVisible() {
+        const isFieldReadPretty = useIsFieldReadPretty();
         const isAssociationField = useIsAssociationField();
         const IsShowMultipleSwitch = useIsShowMultipleSwitch();
-        return isAssociationField && IsShowMultipleSwitch();
+        return !isFieldReadPretty && isAssociationField && IsShowMultipleSwitch();
       },
     },
+    {
+      ...titleField,
+      useVisible: useIsAssociationField,
+    },
+    {
+      ...enableLink,
+      useVisible() {
+        const readPretty = useIsFieldReadPretty();
+        return useIsAssociationField() && readPretty;
+      },
+    },
+    ellipsisSettingsItem,
+    {
+      ...enableLinkSettingsItem,
+      useVisible() {
+        const collectionField = useCollectionField();
+        const readPretty = useIsFieldReadPretty();
+        return !useIsAssociationField() && readPretty && collectionField.interface !== 'multipleSelect';
+      },
+    },
+    {
+      ...openModeSettingsItem,
+      useVisible() {
+        const field = useField();
+        const isAssociationField = useIsAssociationField();
+        const { fieldSchema: columnSchema } = useColumnSchema();
+        const schema = useFieldSchema();
+        const fieldSchema = columnSchema || schema;
+        return (
+          (fieldSchema?.['x-read-pretty'] || field.readPretty) &&
+          (fieldSchema?.['x-component-props']?.enableLink ||
+            (isAssociationField && fieldSchema?.['x-component-props']?.enableLink !== false))
+        );
+      },
+    },
+  ],
+});
+
+/**
+ * Used for Select fields in filter form blocks
+ */
+export const filterSelectComponentFieldSettings = new SchemaSettings({
+  name: 'fieldSettings:component:FilterSelect',
+  items: [
+    {
+      ...fieldComponent,
+      useVisible: useIsAssociationField,
+    },
+    {
+      ...setTheDataScope,
+      useVisible() {
+        const isSelectFieldMode = useIsSelectFieldMode();
+        const isFieldReadPretty = useIsFieldReadPretty();
+        return isSelectFieldMode && !isFieldReadPretty;
+      },
+    },
+    {
+      ...setDefaultSortingRules,
+      useComponentProps() {
+        const { fieldSchema } = useColumnSchema();
+        return {
+          fieldSchema,
+        };
+      },
+      useVisible() {
+        const isSelectFieldMode = useIsSelectFieldMode();
+        const isFieldReadPretty = useIsFieldReadPretty();
+        return isSelectFieldMode && !isFieldReadPretty;
+      },
+    },
+    getAllowMultiple({ title: 'Allow multiple selection' }),
     {
       ...titleField,
       useVisible: useIsAssociationField,

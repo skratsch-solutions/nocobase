@@ -7,11 +7,13 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
-import { RecursionField, connect, useExpressionScope, useField, useFieldSchema } from '@formily/react';
-import { differenceBy, unionBy } from 'lodash';
-import cls from 'classnames';
-import React, { useContext, useEffect, useState } from 'react';
+import { PlusOutlined } from '@ant-design/icons';
+import { connect, useExpressionScope, useField, useFieldSchema } from '@formily/react';
 import { Upload as AntdUpload } from 'antd';
+import cls from 'classnames';
+import { differenceBy, unionBy } from 'lodash';
+import React, { useContext, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   AttachmentList,
   FormProvider,
@@ -20,7 +22,7 @@ import {
   SchemaComponentOptions,
   Uploader,
   useActionContext,
-  useSchemaOptionsContext,
+  useDesignable,
 } from '../..';
 import {
   TableSelectorParamsProvider,
@@ -31,16 +33,15 @@ import {
   useCollection_deprecated,
   useCollectionManager_deprecated,
 } from '../../../collection-manager';
+import { NocoBaseRecursionField } from '../../../formily/NocoBaseRecursionField';
 import { useCompile } from '../../hooks';
 import { ActionContextProvider } from '../action';
 import { EllipsisWithTooltip } from '../input';
 import { Upload } from '../upload';
+import { useStyles } from '../upload/style';
 import { useFieldNames, useInsertSchema } from './hooks';
 import schema from './schema';
 import { flatData, getLabelFormatValue, useLabelUiSchema } from './util';
-import { useTranslation } from 'react-i18next';
-import { PlusOutlined } from '@ant-design/icons';
-import { useStyles } from '../upload/style';
 
 const useTableSelectorProps = () => {
   const field: any = useField();
@@ -82,14 +83,14 @@ const useTableSelectorProps = () => {
 };
 
 function FileSelector(props) {
-  const { disabled, multiple, value, onChange, action, onSelect, quickUpload, selectFile } = props;
+  const { disabled, multiple, value, onChange, action, onSelect, quickUpload, selectFile, ...other } = props;
   const { wrapSSR, hashId, componentCls: prefixCls } = useStyles();
-  const { useFileCollectionStorageRules } = useExpressionScope();
+  const { useFileCollectionStorageRules, useAttachmentFieldProps } = useExpressionScope();
   const { t } = useTranslation();
   const rules = useFileCollectionStorageRules();
+  const attachmentFieldProps = useAttachmentFieldProps();
   // 兼容旧版本
   const showSelectButton = selectFile === undefined && quickUpload === undefined;
-
   return wrapSSR(
     <div className={cls(`${prefixCls}-wrapper`, `${prefixCls}-picture-card-wrapper`, 'nb-upload', hashId)}>
       <div className={cls(`${prefixCls}-list`, `${prefixCls}-list-picture-card`)}>
@@ -116,12 +117,15 @@ function FileSelector(props) {
         ) : null}
         {quickUpload ? (
           <Uploader
+            {...attachmentFieldProps}
             value={value}
             multiple={multiple}
             // onRemove={handleRemove}
             onChange={onChange}
             action={action}
             rules={rules}
+            disabled={disabled}
+            {...other}
           />
         ) : null}
         {selectFile && (multiple || !value) ? (
@@ -156,6 +160,7 @@ const InternalFileManager = (props) => {
   const [selectedRows, setSelectedRows] = useState([]);
   const insertSelector = useInsertSchema('Selector');
   const fieldNames = useFieldNames(props);
+  const { designable } = useDesignable();
   const field: any = useField();
   const [options, setOptions] = useState([]);
   const { getField } = useCollection_deprecated();
@@ -166,11 +171,22 @@ const InternalFileManager = (props) => {
   const handleSelect = (ev) => {
     ev.stopPropagation();
     ev.preventDefault();
-    insertSelector(schema.Selector);
+    if (designable) {
+      insertSelector(schema.Selector);
+    } else {
+      const selectSchema = fieldSchema.reduceProperties((buf, s) => {
+        if (s['x-component'] === 'AssociationField.Selector') {
+          return s;
+        }
+        return buf;
+      }, null);
+      if (!selectSchema) {
+        fieldSchema.addProperty('selector', schema.Selector);
+      }
+    }
     setVisibleSelector(true);
     setSelectedRows([]);
   };
-
   useEffect(() => {
     if (value && Object.keys(value).length > 0) {
       const opts = (Array.isArray(value) ? value : value ? [value] : []).filter(Boolean).map((option) => {
@@ -189,7 +205,7 @@ const InternalFileManager = (props) => {
   const pickerProps = {
     size: 'small',
     fieldNames,
-    multiple: ['o2m', 'm2m'].includes(collectionField?.interface) && multiple,
+    multiple: ['o2m', 'm2m', 'mbm'].includes(collectionField?.interface) && multiple,
     association: {
       target: collectionField?.target,
     },
@@ -216,6 +232,7 @@ const InternalFileManager = (props) => {
   return (
     <div style={{ width: '100%', overflow: 'auto' }}>
       <FileSelector
+        {...others}
         value={multiple ? options : options?.[0]}
         multiple={multiple}
         quickUpload={fieldSchema['x-component-props']?.quickUpload !== false}
@@ -240,7 +257,7 @@ const InternalFileManager = (props) => {
             <FormProvider>
               <TableSelectorParamsProvider params={{}}>
                 <SchemaComponentOptions scope={{ usePickActionProps, useTableSelectorProps }}>
-                  <RecursionField
+                  <NocoBaseRecursionField
                     onlyRenderProperties
                     basePath={field.address}
                     schema={fieldSchema}
@@ -268,4 +285,4 @@ const FileManageReadPretty = connect((props) => {
   );
 });
 
-export { FileManageReadPretty, InternalFileManager };
+export { FileManageReadPretty, FileSelector, InternalFileManager };

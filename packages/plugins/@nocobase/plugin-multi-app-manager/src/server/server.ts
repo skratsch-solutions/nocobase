@@ -13,7 +13,10 @@ import lodash from 'lodash';
 import path from 'path';
 import { ApplicationModel } from '../server';
 
-export type AppDbCreator = (app: Application, options?: Transactionable & { context?: any }) => Promise<void>;
+export type AppDbCreator = (
+  app: Application,
+  options?: Transactionable & { context?: any; applicationModel?: ApplicationModel },
+) => Promise<void>;
 export type AppOptionsFactory = (appName: string, mainApp: Application) => any;
 export type SubAppUpgradeHandler = (mainApp: Application) => Promise<void>;
 
@@ -61,7 +64,7 @@ const defaultSubAppUpgradeHandle: SubAppUpgradeHandler = async (mainApp: Applica
 
 const defaultDbCreator = async (app: Application) => {
   const databaseOptions = app.options.database as any;
-  const { host, port, username, password, dialect, database } = databaseOptions;
+  const { host, port, username, password, dialect, database, schema } = databaseOptions;
 
   if (dialect === 'mysql') {
     const mysql = require('mysql2/promise');
@@ -77,7 +80,7 @@ const defaultDbCreator = async (app: Application) => {
     await connection.end();
   }
 
-  if (dialect === 'postgres') {
+  if (['postgres', 'kingbase'].includes(dialect)) {
     const { Client } = require('pg');
 
     const client = new Client({
@@ -85,13 +88,17 @@ const defaultDbCreator = async (app: Application) => {
       port,
       user: username,
       password,
-      database: 'postgres',
+      database: dialect,
     });
 
     await client.connect();
 
     try {
-      await client.query(`CREATE DATABASE "${database}"`);
+      if (process.env.USE_DB_SCHEMA_IN_SUBAPP === 'true') {
+        await client.query(`CREATE SCHEMA IF NOT EXISTS ${schema}`);
+      } else {
+        await client.query(`CREATE DATABASE "${database}"`);
+      }
     } catch (e) {
       console.log(e);
     }
@@ -109,6 +116,11 @@ const defaultAppOptionsFactory = (appName: string, mainApp: Application) => {
       const mainStorageDir = path.dirname(mainAppStorage);
       rawDatabaseOptions.storage = path.join(mainStorageDir, `${appName}.sqlite`);
     }
+  } else if (
+    process.env.USE_DB_SCHEMA_IN_SUBAPP === 'true' &&
+    ['postgres', 'kingbase'].includes(rawDatabaseOptions.dialect)
+  ) {
+    rawDatabaseOptions.schema = appName;
   } else {
     rawDatabaseOptions.database = appName;
   }
@@ -143,6 +155,38 @@ export class PluginMultiAppManagerServer extends Plugin {
     return lodash.cloneDeep(lodash.omit(oldConfig, ['migrator']));
   }
 
+  async handleSyncMessage(message) {
+    const { type } = message;
+
+    if (type === 'subAppStarted') {
+      const { appName } = message;
+      const model = await this.app.db.getRepository('applications').findOne({
+        filter: {
+          name: appName,
+        },
+      });
+
+      if (!model) {
+        return;
+      }
+
+      if (AppSupervisor.getInstance().hasApp(appName)) {
+        return;
+      }
+
+      const subApp = model.registerToSupervisor(this.app, {
+        appOptionsFactory: this.appOptionsFactory,
+      });
+
+      subApp.runCommand('start', '--quickstart');
+    }
+
+    if (type === 'removeApp') {
+      const { appName } = message;
+      await AppSupervisor.getInstance().removeApp(appName);
+    }
+  }
+
   setSubAppUpgradeHandler(handler: SubAppUpgradeHandler) {
     this.subAppUpgradeHandler = handler;
   }
@@ -159,6 +203,12 @@ export class PluginMultiAppManagerServer extends Plugin {
     this.db.registerModels({
       ApplicationModel,
     });
+  }
+
+  async beforeEnable() {
+    if (this.app.name !== 'main') {
+      throw new Error('@nocobase/plugin-multi-app-manager can only be enabled in the main app');
+    }
   }
 
   async load() {
@@ -180,13 +230,25 @@ export class PluginMultiAppManagerServer extends Plugin {
           appOptionsFactory: this.appOptionsFactory,
         });
 
-        // create database
-        await this.appDbCreator(subApp, {
-          transaction,
-          context: options.context,
+        subApp.on('afterStart', async () => {
+          this.sendSyncMessage({
+            type: 'subAppStarted',
+            appName: name,
+          });
         });
 
-        const startPromise = subApp.runCommand('start', '--quickstart');
+        const quickstart = async () => {
+          // create database
+          await this.appDbCreator(subApp, {
+            transaction,
+            applicationModel: model,
+            context: options.context,
+          });
+
+          await subApp.runCommand('start', '--quickstart');
+        };
+
+        const startPromise = quickstart();
 
         if (options?.context?.waitSubAppInstall) {
           await startPromise;
@@ -194,8 +256,18 @@ export class PluginMultiAppManagerServer extends Plugin {
       },
     );
 
-    this.db.on('applications.afterDestroy', async (model: ApplicationModel) => {
+    this.db.on('applications.afterDestroy', async (model: ApplicationModel, options) => {
       await AppSupervisor.getInstance().removeApp(model.get('name') as string);
+
+      this.sendSyncMessage(
+        {
+          type: 'removeApp',
+          appName: model.get('name'),
+        },
+        {
+          transaction: options.transaction,
+        },
+      );
     });
 
     const self = this;
@@ -239,6 +311,13 @@ export class PluginMultiAppManagerServer extends Plugin {
 
       const subApp = applicationRecord.registerToSupervisor(mainApp, {
         appOptionsFactory: self.appOptionsFactory,
+      });
+
+      subApp.on('afterStart', async () => {
+        this.sendSyncMessage({
+          type: 'subAppStarted',
+          appName: name,
+        });
       });
 
       // must skip load on upgrade

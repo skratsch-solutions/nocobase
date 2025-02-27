@@ -7,29 +7,41 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
-import { useCollectionField, useCollectionManager, useRequest } from '@nocobase/client';
+import { useEffect } from 'react';
+import { useField } from '@formily/react';
+import { useAPIClient, useCollectionField, useCollectionManager, useRequest } from '@nocobase/client';
+import { useStorageUploadProps } from './useStorageUploadProps';
 
 export function useStorageRules(storage) {
   const name = storage ?? '';
-  const { loading, data } = useRequest<any>(
+  const apiClient = useAPIClient();
+  const field = useField<any>();
+  const { loading, data, run } = useRequest<any>(
     {
-      url: `storages:getRules/${name}`,
+      url: `storages:getBasicInfo/${name}`,
     },
     {
+      manual: true,
       refreshDeps: [name],
+      cacheKey: name,
     },
   );
-  return (!loading && data?.data) || null;
+  useEffect(() => {
+    if (field.pattern !== 'editable') {
+      return;
+    }
+    run();
+  }, [field.pattern, run]);
+  return (!loading && data?.data?.rules) || null;
 }
 
 export function useAttachmentFieldProps() {
   const field = useCollectionField();
-  const rules = useStorageRules(field?.storage);
-
-  return {
-    rules,
-    action: `${field.target}:create${field.storage ? `?attachmentField=${field.collectionName}.${field.name}` : ''}`,
-  };
+  const action = `${field.target}:create${
+    field.storage ? `?attachmentField=${field.collectionName}.${field.name}` : ''
+  }`;
+  const storageUploadProps = useStorageUploadProps({ action });
+  return { action, ...storageUploadProps };
 }
 
 export function useFileCollectionStorageRules() {

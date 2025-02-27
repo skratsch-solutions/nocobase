@@ -7,10 +7,11 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
-import React, { useCallback } from 'react';
+import React, { createContext, useCallback, useContext } from 'react';
+import { useTranslation } from 'react-i18next';
 import { uniqBy } from 'lodash';
 
-import { Variable, parseCollectionName, useApp, useCompile, usePlugin } from '@nocobase/client';
+import { Variable, parseCollectionName, useApp, useCompile, usePlugin, useVariableScope } from '@nocobase/client';
 
 import { useFlowContext } from './FlowContext';
 import { NAMESPACE, lang } from './locale';
@@ -112,21 +113,16 @@ export const scopeOptions = {
 export const systemOptions = {
   label: `{{t("System variables", { ns: "${NAMESPACE}" })}}`,
   value: '$system',
-  useOptions({ types, fieldNames = defaultFieldNames }: UseVariableOptions) {
-    return [
-      ...(!types || types.includes('date')
-        ? [
-            {
-              key: 'now',
-              [fieldNames.label]: lang('System time'),
-              [fieldNames.value]: 'now',
-            },
-          ]
-        : []),
-    ];
+  useOptions(options: UseVariableOptions) {
+    const { systemVariables } = usePlugin(WorkflowPlugin);
+    const compile = useCompile();
+    return compile(Array.from(systemVariables.getValues()));
   },
 };
 
+/**
+ * @deprecated
+ */
 export const BaseTypeSets = {
   boolean: new Set(['checkbox']),
   number: new Set(['integer', 'number', 'percent']),
@@ -178,7 +174,7 @@ function matchFieldType(field, type: VariableDataType): boolean {
 }
 
 function isAssociationField(field): boolean {
-  return ['belongsTo', 'hasOne', 'hasMany', 'belongsToMany'].includes(field.type);
+  return ['belongsTo', 'hasOne', 'hasMany', 'belongsToMany', 'belongsToArray'].includes(field.type);
 }
 
 function getNextAppends(field, appends: string[] | null): string[] | null {
@@ -267,7 +263,7 @@ function getNormalizedFields(collectionName, { compile, getCollectionFields }) {
   const fkFields: any[] = [];
   const result: any[] = [];
   fields.forEach((field) => {
-    if (field.isForeignKey) {
+    if (field.isForeignKey && !field.primaryKey) {
       fkFields.push(field);
     } else {
       const fkField = fields.find((f) => f.name === field.foreignKey);
@@ -278,11 +274,13 @@ function getNormalizedFields(collectionName, { compile, getCollectionFields }) {
     }
   });
   const foreignKeyFields = uniqBy(fkFields, 'name');
+  // NOTE: for all foreignKey fields
   for (let i = result.length - 1; i >= 0; i--) {
     const field = result[i];
     if (field.type === 'belongsTo') {
-      const foreignKeyField = foreignKeyFields.find((f) => f.name === field.foreignKey);
-      if (foreignKeyField) {
+      const foreignKeyFieldIndex = foreignKeyFields.findIndex((f) => f.name === field.foreignKey);
+      if (foreignKeyFieldIndex > -1) {
+        const foreignKeyField = foreignKeyFields[foreignKeyFieldIndex];
         result.splice(i, 0, {
           ...field,
           ...foreignKeyField,
@@ -291,6 +289,7 @@ function getNormalizedFields(collectionName, { compile, getCollectionFields }) {
             title: foreignKeyField.uiSchema?.title ? compile(foreignKeyField.uiSchema?.title) : foreignKeyField.name,
           },
         });
+        foreignKeyFields.splice(foreignKeyFieldIndex, 1);
       } else {
         result.splice(i, 0, {
           ...field,
@@ -308,6 +307,7 @@ function getNormalizedFields(collectionName, { compile, getCollectionFields }) {
       result.splice(i, 1);
     }
   }
+  result.push(...foreignKeyFields);
 
   return uniqBy(result, 'name').filter((field) => field.interface && !field.hidden);
 }
@@ -383,7 +383,7 @@ export function useGetCollectionFields(dataSourceName?) {
   const app = useApp();
   const { collectionManager } = app.dataSourceManager.getDataSource(dataSourceName);
 
-  return useCallback((collectionName) => collectionManager.getCollectionFields(collectionName), [collectionManager]);
+  return useCallback((collectionName) => collectionManager.getCollectionAllFields(collectionName), [collectionManager]);
 }
 
 export function WorkflowVariableInput({ variableOptions, ...props }): JSX.Element {
@@ -404,4 +404,35 @@ export function WorkflowVariableRawTextArea({ variableOptions, ...props }): JSX.
 export function WorkflowVariableJSON({ variableOptions, ...props }): JSX.Element {
   const scope = useWorkflowVariableOptions(variableOptions);
   return <Variable.JSON scope={scope} {...props} />;
+}
+
+/**
+ * @experimental
+ */
+export function WorkflowVariableWrapper(props): JSX.Element {
+  const { render, variableOptions, changeOnSelect, nullable, ...others } = props;
+  const hideVariable = useHideVariable();
+  const scope = useWorkflowVariableOptions(variableOptions);
+
+  if (!hideVariable && scope?.length > 0) {
+    return (
+      <Variable.Input scope={scope} changeOnSelect={changeOnSelect} nullable={nullable} {...others}>
+        {render?.(others)}
+      </Variable.Input>
+    );
+  }
+
+  return render?.(others);
+}
+
+/**
+ * @experimental
+ */
+export const HideVariableContext = createContext(false);
+
+/**
+ * @experimental
+ */
+export function useHideVariable() {
+  return useContext(HideVariableContext);
 }

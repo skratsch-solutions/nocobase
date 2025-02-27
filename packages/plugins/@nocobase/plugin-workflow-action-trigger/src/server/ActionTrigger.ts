@@ -7,13 +7,13 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
-import { get } from 'lodash';
+import { get, pick } from 'lodash';
 import { BelongsTo, HasOne } from 'sequelize';
 import { Model, modelAssociationByKey } from '@nocobase/database';
 import Application, { DefaultContext } from '@nocobase/server';
 import { Context as ActionContext, Next } from '@nocobase/actions';
 
-import WorkflowPlugin, { Trigger, WorkflowModel, toJSON } from '@nocobase/plugin-workflow';
+import WorkflowPlugin, { EventOptions, Trigger, WorkflowModel, toJSON } from '@nocobase/plugin-workflow';
 import { joinCollectionName, parseCollectionName } from '@nocobase/data-source-manager';
 
 interface Context extends ActionContext, DefaultContext {}
@@ -24,7 +24,25 @@ export default class extends Trigger {
   constructor(workflow: WorkflowPlugin) {
     super(workflow);
 
-    workflow.app.dataSourceManager.use(this.middleware);
+    const self = this;
+
+    async function triggerWorkflowActionMiddleware(context: Context, next: Next) {
+      const { resourceName, actionName } = context.action;
+
+      if (resourceName === 'workflows' && actionName === 'trigger') {
+        return self.workflowTriggerAction(context, next);
+      }
+
+      await next();
+
+      if (!['create', 'update'].includes(actionName)) {
+        return;
+      }
+
+      return self.collectionTriggerAction(context);
+    }
+
+    workflow.app.dataSourceManager.use(triggerWorkflowActionMiddleware);
   }
 
   /**
@@ -42,22 +60,6 @@ export default class extends Trigger {
 
     return this.collectionTriggerAction(context);
   }
-
-  middleware = async (context: Context, next: Next) => {
-    const { resourceName, actionName } = context.action;
-
-    if (resourceName === 'workflows' && actionName === 'trigger') {
-      return this.workflowTriggerAction(context, next);
-    }
-
-    await next();
-
-    if (!['create', 'update'].includes(actionName)) {
-      return;
-    }
-
-    return this.collectionTriggerAction(context);
-  };
 
   private async collectionTriggerAction(context: Context) {
     const {
@@ -175,7 +177,7 @@ export default class extends Trigger {
     }
 
     for (const event of syncGroup) {
-      await this.workflow.trigger(event[0], event[1], { httpContext: context });
+      await this.workflow.trigger(event[0], event[1]);
     }
 
     for (const event of asyncGroup) {
@@ -183,7 +185,67 @@ export default class extends Trigger {
     }
   }
 
-  on(workflow: WorkflowModel) {}
+  async execute(workflow: WorkflowModel, values, options: EventOptions) {
+    // const { values } = context.action.params;
+    const [dataSourceName, collectionName] = parseCollectionName(workflow.config.collection);
+    const { collectionManager } = this.workflow.app.dataSourceManager.dataSources.get(dataSourceName);
+    const { filterTargetKey, repository } = collectionManager.getCollection(collectionName);
 
-  off(workflow: WorkflowModel) {}
+    let { data } = values;
+    let filterByTk;
+    let loadNeeded = false;
+    if (data && typeof data === 'object') {
+      filterByTk = Array.isArray(filterTargetKey)
+        ? pick(
+            data,
+            filterTargetKey.sort((a, b) => a.localeCompare(b)),
+          )
+        : data[filterTargetKey];
+    } else {
+      filterByTk = data;
+      loadNeeded = true;
+    }
+    const UserRepo = this.workflow.app.db.getRepository('users');
+    const actor = await UserRepo.findOne({
+      filterByTk: values.userId,
+      appends: ['roles'],
+    });
+    if (!actor) {
+      throw new Error('user not found');
+    }
+    const { roles, ...user } = actor.desensitize().get();
+    const roleName = values.roleName || roles?.[0]?.name;
+
+    if (loadNeeded || workflow.config.appends?.length) {
+      data = await repository.findOne({
+        filterByTk,
+        appends: workflow.config.appends,
+      });
+    }
+    return this.workflow.trigger(
+      workflow,
+      {
+        data,
+        user,
+        roleName,
+      },
+      options,
+    );
+  }
+
+  validateContext(values) {
+    if (!values.data) {
+      return {
+        data: 'Data is required',
+      };
+    }
+
+    if (!values.userId) {
+      return {
+        userId: 'UserId is required',
+      };
+    }
+
+    return null;
+  }
 }

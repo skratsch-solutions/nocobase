@@ -7,7 +7,8 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
-import { uid } from '@formily/shared';
+import React from 'react';
+import { EditOutlined } from '@ant-design/icons';
 
 import { useCollectionDataSource } from '@nocobase/client';
 import { isValidFilter } from '@nocobase/utils/client';
@@ -26,6 +27,7 @@ export default class extends Instruction {
   type = 'update';
   group = 'collection';
   description = `{{t("Update records of a collection. You can use variables from upstream nodes as query conditions and field values.", { ns: "${NAMESPACE}" })}}`;
+  icon = (<EditOutlined style={{}} />);
   fieldset = {
     collection: {
       ...collection,
@@ -73,7 +75,7 @@ export default class extends Instruction {
               {
                 label: `{{t("Update in a batch", { ns: "${NAMESPACE}" })}}`,
                 value: false,
-                tooltip: `{{t("Update all eligible data at one time, which has better performance when the amount of data is large. But the updated data will not trigger other workflows, and will not record audit logs.", { ns: "${NAMESPACE}" })}}`,
+                tooltip: `{{t("Update all eligible data at one time, which has better performance when the amount of data is large. But association fields are not supported (unless foreign key in current collection), and the updated data will not trigger other workflows.", { ns: "${NAMESPACE}" })}}`,
               },
               {
                 label: `{{t("Update one by one", { ns: "${NAMESPACE}" })}}`,

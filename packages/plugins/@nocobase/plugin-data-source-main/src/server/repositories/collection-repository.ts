@@ -47,6 +47,8 @@ export class CollectionRepository extends Repository {
       if (instance.get('view') || instance.get('sql')) {
         viewCollections.push(instance.get('name'));
       }
+
+      this.database.collectionsSort.set(instance.get('name'), instance.get('sort'));
     }
 
     // set graph edges by inherits
@@ -184,9 +186,15 @@ export class CollectionRepository extends Repository {
       });
     }
 
+    const collectionOptions = options;
+
+    if (collectionOptions.schema && collectionOptions.schema == (this.database.options.schema || 'public')) {
+      delete collectionOptions.schema;
+    }
+
     await this.create({
       values: {
-        ...options,
+        ...collectionOptions,
         fields,
         from: 'db2cm',
       },

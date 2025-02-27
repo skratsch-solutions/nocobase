@@ -30,7 +30,9 @@ export class PluginFieldChinaRegionServer extends Plugin {
 
     this.app.acl.allow('chinaRegions', 'list', 'loggedIn');
 
-    this.app.resourcer.use(async (ctx, next) => {
+    this.app.acl.appendStrategyResource('chinaRegions');
+
+    this.app.resourceManager.use(async function blockChinaRegionList(ctx, next) {
       const { resourceName, actionName } = ctx.action.params;
 
       if (resourceName == 'chinaRegions' && actionName !== 'list') {

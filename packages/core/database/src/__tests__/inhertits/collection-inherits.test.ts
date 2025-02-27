@@ -25,6 +25,94 @@ describe.runIf(isPg())('collection inherits', () => {
     await db.close();
   });
 
+  it('should load parent collection with association field', async () => {
+    const User = db.collection({
+      name: 'users',
+      autoGenId: false,
+      timestamps: false,
+      fields: [
+        {
+          name: 'roles',
+          type: 'belongsToMany',
+          target: 'roles',
+          through: 'rolesUsers',
+        },
+      ],
+    });
+
+    User.setField('roles', {
+      type: 'belongsToMany',
+      target: 'roles',
+      through: 'rolesUsers',
+    });
+
+    User.setField('id', {
+      type: 'bigInt',
+      primaryKey: true,
+    });
+
+    const Role = db.collection({
+      name: 'roles',
+      autoGenId: false,
+      fields: [
+        {
+          name: 'name',
+          primaryKey: true,
+          type: 'string',
+        },
+        {
+          name: 'users',
+          type: 'belongsToMany',
+          target: 'users',
+          through: 'rolesUsers',
+        },
+      ],
+    });
+
+    await db.sync();
+
+    let err;
+    try {
+      const child = db.collection({
+        name: 'child',
+        inherits: ['users'],
+      });
+    } catch (e) {
+      err = e;
+    }
+
+    expect(err).toBeUndefined();
+  });
+
+  it('should emit afterSync event', async () => {
+    const Root = db.collection({
+      name: 'root',
+      fields: [
+        { name: 'name', type: 'string' },
+        {
+          name: 'bs',
+          type: 'hasMany',
+          target: 'b',
+          foreignKey: 'root_id',
+        },
+      ],
+    });
+
+    const Child = db.collection({
+      name: 'child',
+      inherits: ['root'],
+    });
+
+    const fn = vi.fn();
+    db.on('child.afterSync', (options) => {
+      fn();
+    });
+
+    await db.sync();
+
+    expect(fn).toBeCalled();
+  });
+
   it('should append __collection with eager load', async () => {
     const Root = db.collection({
       name: 'root',

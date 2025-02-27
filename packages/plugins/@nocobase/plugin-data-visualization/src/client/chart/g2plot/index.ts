@@ -7,26 +7,38 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
-import { Area, Column, Line, Scatter, Bar } from '@ant-design/plots';
 import { Pie } from './pie';
 import { DualAxes } from './dualAxes';
 import { G2PlotChart } from './g2plot';
 
+import { lazy } from '@nocobase/client';
+// import { Area, Column, Line, Scatter, Bar } from '@ant-design/plots';
+const { Area, Column, Line, Scatter, Bar } = lazy(
+  () => import('@ant-design/plots'),
+  'Area',
+  'Column',
+  'Line',
+  'Scatter',
+  'Bar',
+);
+
 export default [
   new G2PlotChart({
     name: 'line',
-    title: 'Line Chart',
+    title: 'Line',
     Component: Line,
     config: ['smooth', 'isStack'],
   }),
   new G2PlotChart({
     name: 'area',
-    title: 'Area Chart',
+    title: 'Area',
     Component: Area,
     config: [
       'smooth',
       {
-        property: 'isStack',
+        configType: 'boolean',
+        name: 'isStack',
+        title: 'isStack',
         defaultValue: true,
       },
       'isPercent',
@@ -34,17 +46,17 @@ export default [
   }),
   new G2PlotChart({
     name: 'column',
-    title: 'Column Chart',
+    title: 'Column',
     Component: Column,
     config: ['isGroup', 'isStack', 'isPercent'],
   }),
   new G2PlotChart({
     name: 'bar',
-    title: 'Bar Chart',
+    title: 'Bar',
     Component: Bar,
     config: ['isGroup', 'isStack', 'isPercent'],
   }),
   new Pie(),
   new DualAxes(),
-  new G2PlotChart({ name: 'scatter', title: 'Scatter Chart', Component: Scatter }),
+  new G2PlotChart({ name: 'scatter', title: 'Scatter', Component: Scatter }),
 ];

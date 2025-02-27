@@ -103,7 +103,7 @@ test.describe('table data selector schema settings', () => {
     await page.getByRole('menuitem', { name: 'Delete' }).hover();
     await page.mouse.move(-300, 0);
 
-    await page.getByLabel('block-item-CollectionField-').nth(1).click();
+    await page.getByTestId('select-data-picker').first().click();
 
     // 3. 创建 Table 区块
     await page.getByLabel('schema-initializer-Grid-popup').hover();
@@ -137,12 +137,15 @@ test.describe('table data selector schema settings', () => {
     await expect(
       page.getByLabel('block-item-CardItem-table-selector-data-scope-variable-table-selector').getByRole('row'),
     ).toHaveCount(2); // 这里之所以是 2，是因为表头也是一个 row
+
     await expect(
       page
         .getByLabel('block-item-CardItem-table-selector-data-scope-variable-table-selector')
         .getByRole('row')
         .getByText(record['manyToMany'][0]['singleLineText']),
-    ).toBeVisible();
+    ).toBeVisible({
+      timeout: 3000,
+    });
   });
 });
 

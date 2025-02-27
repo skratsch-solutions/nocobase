@@ -7,7 +7,7 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
-import { FormOutlined } from '@ant-design/icons';
+import { ProjectOutlined } from '@ant-design/icons';
 import { FormLayout } from '@formily/antd-v5';
 import { SchemaOptionsContext, useForm } from '@formily/react';
 import React, { useContext } from 'react';
@@ -15,20 +15,20 @@ import { useTranslation } from 'react-i18next';
 
 import {
   APIClientProvider,
-  useCollectionManager_deprecated,
-  useGlobalTheme,
+  Collection,
+  CollectionFieldOptions,
+  DataBlockInitializer,
   FormDialog,
   SchemaComponent,
   SchemaComponentOptions,
-  DataBlockInitializer,
+  useAPIClient,
+  useCollectionManager_deprecated,
+  useGlobalTheme,
   useSchemaInitializer,
   useSchemaInitializerItem,
-  useAPIClient,
-  Collection,
-  CollectionFieldOptions,
 } from '@nocobase/client';
-import { createKanbanBlockUISchema } from './createKanbanBlockUISchema';
 import { CreateAndSelectSort } from './CreateAndSelectSort';
+import { createKanbanBlockUISchema } from './createKanbanBlockUISchema';
 import { NAMESPACE } from './locale';
 
 const CreateKanbanForm = ({ item, sortFields, collectionFields, fields, options, api }) => {
@@ -130,8 +130,8 @@ export const KanbanBlockInitializer = ({
   return (
     <DataBlockInitializer
       {...itemConfig}
-      componentType={'Calendar'}
-      icon={<FormOutlined />}
+      componentType={`Kanban`}
+      icon={<ProjectOutlined />}
       onCreateBlockSchema={async (options) => {
         if (createBlockSchema) {
           return createBlockSchema(options);

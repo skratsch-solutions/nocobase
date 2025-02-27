@@ -10,14 +10,16 @@
 import { Field } from '@formily/core';
 import { Schema, useFieldSchema, useForm } from '@formily/react';
 import _ from 'lodash';
-import { useCallback, useEffect, useMemo } from 'react';
 import {
   CollectionFieldOptions_deprecated,
   useCollectionManager_deprecated,
   useCollection_deprecated,
 } from '../../../../collection-manager';
 import { markRecordAsNew } from '../../../../data-source/collection-record/isNewRecord';
+import { isVariable } from '../../../../variables/utils/isVariable';
 import { isSubMode } from '../../association-field/util';
+
+import { useCallback, useEffect, useMemo } from 'react';
 
 /**
  * #### 处理 `子表单` 和 `子表格` 中的特殊情况
@@ -45,7 +47,16 @@ export const useSpecialCase = () => {
       if (parentFieldSchema) {
         const parentField: any = form.query(parentFieldSchema.name).take();
         if (parentField) {
-          parentField.setInitialValue(transformValue(value, { field: parentField, subFieldSchema: fieldSchema }));
+          const newValue = _.isEmpty(value)
+            ? []
+            : _.map(transformValue(value, { field: parentField, subFieldSchema: fieldSchema }), (item) =>
+                markRecordAsNew(item),
+              );
+
+          // Use isSubset to determine if newValue is a subset of parentField.initialValue, preventing infinite loops
+          if (!isSubset(newValue, parentField.initialValue)) {
+            parentField.setInitialValue(newValue);
+          }
         }
       }
     },
@@ -92,8 +103,8 @@ export function isSpecialCaseField({
   fieldSchema: Schema;
   getCollectionField: (name: string) => CollectionFieldOptions_deprecated;
 }) {
-  // 排除掉“当前对象”这个变量
-  if (fieldSchema.default.includes('$iteration')) {
+  // 只针对“表格选中记录”变量有效
+  if (!fieldSchema.default || !fieldSchema.default.includes('$context')) {
     return false;
   }
 
@@ -178,15 +189,91 @@ export function isFromDatabase(value: Record<string, any>) {
  * 3. 如果子表格中没有设置默认值，就会再把子表格重置为空。
  * @param param0
  */
-export const useSubTableSpecialCase = ({ field }) => {
+export const useSubTableSpecialCase = ({ rootField, rootSchema }) => {
+  const { hasUsedVariable } = useHasUsedVariable();
+
   useEffect(() => {
-    if (_.isEmpty(field.value)) {
-      const value = field.value;
-      field.value = [markRecordAsNew({})];
+    if (_.isEmpty(rootField.value) && hasUsedVariable('$context', rootSchema)) {
+      const emptyValue = rootField.value;
+      const newValue = [markRecordAsNew({})];
+      rootField.value = newValue;
       // 因为默认值的解析是异步的，所以下面的代码会优先于默认值的设置，这样就防止了设置完默认值后又被清空的问题
       setTimeout(() => {
-        field.value = value;
+        if (JSON.stringify(rootField.value) === JSON.stringify(newValue)) {
+          rootField.value = emptyValue;
+        }
       });
     }
-  }, []);
+  }, [rootField, rootSchema, hasUsedVariable]);
 };
+
+/**
+ * Determines if one array is a subset of another array
+ * @param subset The potential subset
+ * @param superset The potential superset
+ * @returns Returns true if subset is a subset of superset, otherwise false
+ */
+export function isSubset(subset: any[], superset: any[]): boolean {
+  // If lengths are different, it's definitely not a subset
+  if (subset.length !== superset.length) {
+    return false;
+  }
+
+  // Compare each element
+  for (let i = 0; i < subset.length; i++) {
+    const subsetItem = subset[i];
+    const supersetItem = superset[i];
+    // Use _.omitBy to remove null values, then compare objects with _.isMatch
+    if (!_.isMatch(_.omitBy(supersetItem, _.isNil), _.omitBy(subsetItem, _.isNil))) {
+      return false;
+    }
+  }
+
+  // All elements match, it's a subset
+  return true;
+}
+
+/**
+ * Recursively checks a schema and its properties for usage of a variable name
+ * @param schema The Schema object to check
+ * @param variableName The variable name to search for
+ * @returns True if the variable is used in the schema or its properties
+ */
+const checkSchema = (schema: Schema, variableName: string): boolean => {
+  // Check if current node is a FormItem and has a default value containing the variable
+  if (schema['x-decorator'] === 'FormItem') {
+    const defaultValue = schema.default;
+    if (
+      defaultValue &&
+      typeof defaultValue === 'string' &&
+      isVariable(defaultValue) &&
+      defaultValue.includes(variableName)
+    ) {
+      return true;
+    }
+  }
+
+  // Recursively check all child properties
+  let hasVariable = false;
+  schema.mapProperties((childSchema) => {
+    if (checkSchema(childSchema, variableName)) {
+      hasVariable = true;
+    }
+  });
+
+  return hasVariable;
+};
+
+export function useHasUsedVariable() {
+  /**
+   * Checks if a variable name is used anywhere in a schema
+   * @param variableName The variable name to search for
+   * @param rootSchema The root Schema object to check
+   * @returns True if the variable is used in the schema
+   */
+  const hasUsedVariable = useCallback((variableName: string, rootSchema: Schema): boolean => {
+    return checkSchema(rootSchema, variableName);
+  }, []);
+
+  return { hasUsedVariable };
+}

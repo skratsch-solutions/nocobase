@@ -10,10 +10,13 @@
 import { useFieldSchema } from '@formily/react';
 import { SchemaSettings } from '../../../../application/schema-settings/SchemaSettings';
 import { SchemaSettingsItemType } from '../../../../application/schema-settings/types';
-import { useCollection_deprecated } from '../../../../collection-manager';
+import { useCollection } from '../../../../data-source/collection/CollectionProvider';
 import { SchemaSettingsFormItemTemplate, SchemaSettingsLinkageRules } from '../../../../schema-settings';
-import { SchemaSettingsBlockTitleItem } from '../../../../schema-settings/SchemaSettingsBlockTitleItem';
 import { SchemaSettingsBlockHeightItem } from '../../../../schema-settings/SchemaSettingsBlockHeightItem';
+import { SchemaSettingsBlockTitleItem } from '../../../../schema-settings/SchemaSettingsBlockTitleItem';
+import { useBlockTemplateContext } from '../../../../schema-templates/BlockTemplateProvider';
+import { SchemaSettingsLayoutItem } from '../../../../schema-settings/SchemaSettingsLayoutItem';
+
 const commonItems: SchemaSettingsItemType[] = [
   {
     name: 'title',
@@ -27,7 +30,7 @@ const commonItems: SchemaSettingsItemType[] = [
     name: 'linkageRules',
     Component: SchemaSettingsLinkageRules,
     useComponentProps() {
-      const { name } = useCollection_deprecated();
+      const { name } = useCollection();
       return {
         collectionName: name,
         readPretty: true,
@@ -38,17 +41,22 @@ const commonItems: SchemaSettingsItemType[] = [
     name: 'formItemTemplate',
     Component: SchemaSettingsFormItemTemplate,
     useComponentProps() {
-      const { name } = useCollection_deprecated();
+      const { name } = useCollection();
       const fieldSchema = useFieldSchema();
+      const { componentNamePrefix } = useBlockTemplateContext();
       const defaultResource =
         fieldSchema?.['x-decorator-props']?.resource || fieldSchema?.['x-decorator-props']?.association;
       return {
         insertAdjacentPosition: 'beforeEnd',
-        componentName: 'ReadPrettyFormItem',
+        componentName: `${componentNamePrefix}ReadPrettyFormItem`,
         collectionName: name,
         resourceName: defaultResource,
       };
     },
+  },
+  {
+    name: 'setBlockLayout',
+    Component: SchemaSettingsLayoutItem,
   },
   {
     name: 'divider',

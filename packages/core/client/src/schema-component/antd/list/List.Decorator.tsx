@@ -32,7 +32,10 @@ const InternalListBlockProvider = (props) => {
 
   useEffect(() => {
     if (!service?.loading) {
-      form.setValuesIn(field.address.concat('list').toString(), service?.data?.data);
+      form.query(/\.list$/).forEach((field) => {
+        // @ts-ignore
+        field.setValue?.(service?.data?.data);
+      });
     }
   }, [field.address, form, service?.data?.data, service?.loading]);
 
@@ -47,9 +50,6 @@ const InternalListBlockProvider = (props) => {
         <FormLayout layout={'vertical'}>
           <div
             className={cx(css`
-              .ant-description-input {
-                line-height: 34px;
-              }
               .ant-formily-item-feedback-layout-loose {
                 margin-bottom: 12px;
               }

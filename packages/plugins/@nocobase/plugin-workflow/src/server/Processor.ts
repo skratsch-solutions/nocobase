@@ -11,6 +11,7 @@ import { Model, Transaction, Transactionable } from '@nocobase/database';
 import { appendArrayColumn } from '@nocobase/evaluators';
 import { Logger } from '@nocobase/logger';
 import { parse } from '@nocobase/utils';
+import set from 'lodash/set';
 import type Plugin from './Plugin';
 import { EXECUTION_STATUS, JOB_STATUS } from './constants';
 import { Runner } from './instructions';
@@ -39,6 +40,11 @@ export default class Processor {
    * @experimental
    */
   transaction: Transaction;
+
+  /**
+   * @experimental
+   */
+  mainTransaction: Transaction;
 
   /**
    * @experimental
@@ -104,11 +110,16 @@ export default class Processor {
   public async prepare() {
     const {
       execution,
-      transaction,
       options: { plugin },
     } = this;
+
+    this.mainTransaction = plugin.useDataSourceTransaction('main', this.transaction);
+
+    const transaction = this.mainTransaction;
+
     if (!execution.workflow) {
-      execution.workflow = plugin.enabledCache.get(execution.workflowId);
+      execution.workflow =
+        plugin.enabledCache.get(execution.workflowId) || (await execution.getWorkflow({ transaction }));
     }
 
     const nodes = await execution.workflow.getNodes({ transaction });
@@ -155,13 +166,13 @@ export default class Processor {
       this.logger.debug(`config of node`, { data: node.config });
       job = await instruction(node, prevJob, this);
       if (!job) {
-        return null;
+        return this.exit();
       }
     } catch (err) {
       // for uncaught error, set to error
       this.logger.error(
         `execution (${this.execution.id}) run instruction [${node.type}] for node (${node.id}) failed: `,
-        { error: err },
+        err,
       );
       job = {
         result:
@@ -205,6 +216,9 @@ export default class Processor {
   public async run(node, input?) {
     const { instructions } = this.options.plugin;
     const instruction = instructions.get(node.type);
+    if (!instruction) {
+      return Promise.reject(new Error(`instruction [${node.type}] not found for node (#${node.id})`));
+    }
     if (typeof instruction.run !== 'function') {
       return Promise.reject(new Error('`run` should be implemented for customized execution of the node'));
     }
@@ -220,7 +234,7 @@ export default class Processor {
     if (parentNode) {
       this.logger.debug(`not on main, recall to parent entry node (${node.id})})`);
       await this.recall(parentNode, job);
-      return job;
+      return null;
     }
 
     // really done for all nodes
@@ -231,6 +245,9 @@ export default class Processor {
   private async recall(node, job) {
     const { instructions } = this.options.plugin;
     const instruction = instructions.get(node.type);
+    if (!instruction) {
+      return Promise.reject(new Error(`instruction [${node.type}] not found for node (#${node.id})`));
+    }
     if (typeof instruction.resume !== 'function') {
       return Promise.reject(
         new Error(`"resume" method should be implemented for [${node.type}] instruction of node (#${node.id})`),
@@ -243,7 +260,10 @@ export default class Processor {
   public async exit(s?: number) {
     if (typeof s === 'number') {
       const status = (<typeof Processor>this.constructor).StatusMap[s] ?? Math.sign(s);
-      await this.execution.update({ status }, { transaction: this.transaction });
+      await this.execution.update({ status }, { transaction: this.mainTransaction });
+    }
+    if (this.mainTransaction && this.mainTransaction !== this.transaction) {
+      await this.mainTransaction.commit();
     }
     this.logger.info(`execution (${this.execution.id}) exiting with status ${this.execution.status}`);
     return null;
@@ -252,12 +272,10 @@ export default class Processor {
   // TODO(optimize)
   /**
    * @experimental
-   * @param {JobModel | Record<string, any>} payload
-   * @returns {JobModel}
    */
-  async saveJob(payload) {
+  async saveJob(payload: JobModel | Record<string, any>): Promise<JobModel> {
     const { database } = <typeof ExecutionModel>this.execution.constructor;
-    const { transaction } = this;
+    const { mainTransaction: transaction } = this;
     const { model } = database.getCollection('jobs');
     let job;
     if (payload instanceof model) {
@@ -370,7 +388,7 @@ export default class Processor {
   /**
    * @experimental
    */
-  public getScope(sourceNodeId: number) {
+  public getScope(sourceNodeId: number, includeSelfScope = false) {
     const node = this.nodesMap.get(sourceNodeId);
     const systemFns = {};
     const scope = {
@@ -378,13 +396,13 @@ export default class Processor {
       node,
     };
     for (const [name, fn] of this.options.plugin.functions.getEntities()) {
-      systemFns[name] = fn.bind(scope);
+      set(systemFns, name, fn.bind(scope));
     }
 
     const $scopes = {};
-    for (let n = this.findBranchParentNode(node); n; n = this.findBranchParentNode(n)) {
+    for (let n = includeSelfScope ? node : this.findBranchParentNode(node); n; n = this.findBranchParentNode(n)) {
       const instruction = this.options.plugin.instructions.get(n.type);
-      if (typeof instruction.getScope === 'function') {
+      if (typeof instruction?.getScope === 'function') {
         $scopes[n.id] = $scopes[n.key] = instruction.getScope(n, this.jobsMapByNodeKey[n.key], this);
       }
     }
@@ -400,9 +418,9 @@ export default class Processor {
   /**
    * @experimental
    */
-  public getParsedValue(value, sourceNodeId: number, additionalScope?: object) {
+  public getParsedValue(value, sourceNodeId: number, { additionalScope = {}, includeSelfScope = false } = {}) {
     const template = parse(value);
-    const scope = Object.assign(this.getScope(sourceNodeId), additionalScope);
+    const scope = Object.assign(this.getScope(sourceNodeId, includeSelfScope), additionalScope);
     template.parameters.forEach(({ key }) => {
       appendArrayColumn(scope, key);
     });

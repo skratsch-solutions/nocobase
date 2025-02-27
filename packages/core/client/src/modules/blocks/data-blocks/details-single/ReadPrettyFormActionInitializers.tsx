@@ -8,12 +8,8 @@
  */
 
 import { CompatibleSchemaInitializer } from '../../../../application/schema-initializer/CompatibleSchemaInitializer';
-import { useCollection_deprecated } from '../../../../collection-manager/hooks/useCollection_deprecated';
-
-const useVisibleCollection = () => {
-  const collection = useCollection_deprecated();
-  return (collection.template !== 'view' || collection?.writableView) && collection.template !== 'sql';
-};
+import { useCollection, useDataBlockProps } from '../../../../data-source';
+import { useActionAvailable } from '../../useActionAvailable';
 
 const commonOptions = {
   title: '{{t("Configure actions")}}',
@@ -33,7 +29,7 @@ const commonOptions = {
           type: 'primary',
         },
       },
-      useVisible: useVisibleCollection,
+      useVisible: () => useActionAvailable('update'),
     },
     {
       title: '{{t("Delete")}}',
@@ -43,7 +39,31 @@ const commonOptions = {
         'x-component': 'Action',
         'x-decorator': 'ACLActionProvider',
       },
-      useVisible: useVisibleCollection,
+      useVisible: () => useActionAvailable('destroy'),
+    },
+    {
+      type: 'item',
+      title: '{{t("Disassociate")}}',
+      name: 'disassociate',
+      Component: 'DisassociateActionInitializer',
+      schema: {
+        'x-component': 'Action',
+        'x-action': 'disassociate',
+        'x-acl-action': 'update',
+        'x-decorator': 'ACLActionProvider',
+      },
+      useVisible() {
+        const props = useDataBlockProps();
+        const collection = useCollection() || ({} as any);
+        const { unavailableActions, availableActions } = collection?.options || {};
+        if (availableActions) {
+          return !!props?.association && availableActions.includes?.('update');
+        }
+        if (unavailableActions) {
+          return !!props?.association && !unavailableActions?.includes?.('update');
+        }
+        return true;
+      },
     },
     {
       name: 'popup',
@@ -64,13 +84,12 @@ const commonOptions = {
           'x-component': 'Action',
         };
       },
-      useVisible: useVisibleCollection,
+      useVisible: () => useActionAvailable('update'),
     },
     {
       name: 'customRequest',
       title: '{{t("Custom request")}}',
       Component: 'CustomRequestInitializer',
-      useVisible: useVisibleCollection,
     },
     {
       name: 'link',

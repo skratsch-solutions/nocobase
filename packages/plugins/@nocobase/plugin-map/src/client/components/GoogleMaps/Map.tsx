@@ -10,18 +10,17 @@
 import { SyncOutlined } from '@ant-design/icons';
 import { useFieldSchema } from '@formily/react';
 import { Loader } from '@googlemaps/js-api-loader';
-import { css, useAPIClient, useApp, useCollection_deprecated } from '@nocobase/client';
+import { css, useAPIClient, useApp, useCollection_deprecated, useNavigateNoUpdate } from '@nocobase/client';
 import { useMemoizedFn } from 'ahooks';
 import { Alert, App, Button, Spin } from 'antd';
 import React, { useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { defaultImage } from '../../constants';
 import { useMapConfiguration } from '../../hooks';
 import { useMapTranslation } from '../../locale';
 import { MapEditorType } from '../../types';
+import { useMapHeight } from '../hook';
 import { Search } from './Search';
 import { getCurrentPosition, getIcon } from './utils';
-import { useMapHeight } from '../hook';
 
 export type OverlayOptions = google.maps.PolygonOptions & google.maps.MarkerOptions & google.maps.PolylineOptions;
 
@@ -125,7 +124,7 @@ export const GoogleMapsComponent = React.forwardRef<GoogleMapForwardedRefProps, 
       ...overlayCommonOptions,
     });
 
-    const navigate = useNavigate();
+    const navigate = useNavigateNoUpdate();
     const mapContainerRef = useRef<HTMLDivElement>();
     const cleanupOverlayListenersRef = useRef<Set<() => void>>(new Set());
 
@@ -165,9 +164,9 @@ export const GoogleMapsComponent = React.forwardRef<GoogleMapForwardedRefProps, 
     });
 
     const toCenter = useMemoizedFn((position) => {
-      if (map.current) {
-        map.current.setCenter(position);
-        map.current.setZoom(zoom);
+      if (map.current && position) {
+        map.current?.setCenter(position);
+        map.current?.setZoom(zoom);
       }
     });
 
@@ -193,7 +192,7 @@ export const GoogleMapsComponent = React.forwardRef<GoogleMapForwardedRefProps, 
         }
       });
 
-      map.current.setCenter(bounds.getCenter());
+      map.current?.setCenter?.(bounds.getCenter());
     });
 
     const onFocusOverlay = () => {
@@ -387,7 +386,6 @@ export const GoogleMapsComponent = React.forwardRef<GoogleMapForwardedRefProps, 
       });
     });
     const app = useApp();
-
     if (!accessKey || errMessage) {
       return (
         <Alert

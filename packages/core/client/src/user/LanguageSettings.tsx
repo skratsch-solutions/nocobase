@@ -16,7 +16,7 @@ import locale from '../locale';
 export const useLanguageSettings = () => {
   const { t, i18n } = useTranslation();
   const api = useAPIClient();
-  const { data } = useSystemSettings();
+  const { data } = useSystemSettings() || {};
   const enabledLanguages: string[] = useMemo(() => data?.data?.enabledLanguages || [], [data?.data?.enabledLanguages]);
   const result = useMemo<MenuProps['items'][0]>(() => {
     return {
@@ -35,7 +35,7 @@ export const useLanguageSettings = () => {
             })}
           defaultValue={i18n.language}
           onChange={async (lang) => {
-            await api.resource('users').updateProfile({
+            await api.resource('users').updateLang({
               values: {
                 appLang: lang,
               },

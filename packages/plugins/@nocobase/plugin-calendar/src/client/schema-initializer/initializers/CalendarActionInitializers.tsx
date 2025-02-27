@@ -10,7 +10,7 @@
 import {
   CompatibleSchemaInitializer,
   InitializerWithSwitch,
-  useCollection_deprecated,
+  useActionAvailable,
   useSchemaInitializerItem,
 } from '@nocobase/client';
 import React from 'react';
@@ -90,9 +90,14 @@ const commonOptions = {
           skipScopeCheck: true,
         },
       },
-      useVisible() {
-        const collection = useCollection_deprecated();
-        return (collection.template !== 'view' || collection?.writableView) && collection.template !== 'sql';
+      useVisible: () => useActionAvailable('create'),
+    },
+    {
+      name: 'customRequest',
+      title: '{{t("Custom request")}}',
+      Component: 'CustomRequestInitializer',
+      schema: {
+        'x-action': 'customize:table:request:global',
       },
     },
   ],

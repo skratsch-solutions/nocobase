@@ -8,11 +8,20 @@
  */
 
 import React, { useContext, useEffect } from 'react';
-import { Card, Tooltip } from 'antd';
+import { App, Card, Tooltip } from 'antd';
 import { onFieldChange } from '@formily/core';
-import { useField, useFormEffects } from '@formily/react';
+import { useField, useForm, useFormEffects } from '@formily/react';
 
-import { SchemaComponent, SchemaComponentContext, useApp, usePlugin, useRecord } from '@nocobase/client';
+import {
+  SchemaComponent,
+  SchemaComponentContext,
+  useActionContext,
+  useApp,
+  usePlugin,
+  useRecord,
+  useResourceActionContext,
+  useResourceContext,
+} from '@nocobase/client';
 
 import { ExecutionLink } from './ExecutionLink';
 import { ExecutionResourceProvider } from './ExecutionResourceProvider';
@@ -22,6 +31,7 @@ import { workflowSchema } from './schemas/workflows';
 import { ExecutionStatusSelect, ExecutionStatusColumn } from './components/ExecutionStatus';
 import WorkflowPlugin, { RadioWithTooltip } from '.';
 import { useRefreshActionProps } from './hooks/useRefreshActionProps';
+import { useTranslation } from 'react-i18next';
 
 function SyncOptionSelect(props) {
   const field = useField<any>();
@@ -59,14 +69,57 @@ function SyncOptionSelect(props) {
   return <RadioWithTooltip {...props} />;
 }
 
-function useWorkflowSyncAction(field) {
+function useWorkflowSyncReaction(field) {
   const app = useApp();
   field.visible = Boolean(usePlugin('multi-app-share-collection') || app.name !== 'main');
 }
 
+function useSyncAction() {
+  const { message } = App.useApp();
+  const { t } = useTranslation();
+  const { resource } = useResourceContext();
+  return {
+    async run() {
+      await resource.sync();
+      message.success(t('Operation succeeded'));
+    },
+  };
+}
+
+function useRevisionAction() {
+  const { message } = App.useApp();
+  const { t } = useTranslation();
+  const { refresh } = useResourceActionContext();
+  const { resource, targetKey } = useResourceContext();
+  const { setVisible } = useActionContext();
+  const { [targetKey]: filterByTk } = useRecord();
+  const form = useForm();
+  const field = useField();
+
+  return {
+    async run() {
+      try {
+        await form.submit();
+        field.data = field.data || {};
+        field.data.loading = true;
+        await resource.revision({ filterByTk, values: form.values });
+        message.success(t('Operation succeeded'));
+        refresh();
+        setVisible(false);
+      } catch (error) {
+        console.error(error);
+      } finally {
+        if (field.data) {
+          field.data.loading = false;
+        }
+      }
+    },
+  };
+}
+
 export function WorkflowPane() {
   const ctx = useContext(SchemaComponentContext);
-  const { getTriggersOptions } = usePlugin(WorkflowPlugin);
+  const { useTriggersOptions } = usePlugin(WorkflowPlugin);
   return (
     <Card bordered={false}>
       <SchemaComponentContext.Provider value={{ ...ctx, designable: false }}>
@@ -83,9 +136,11 @@ export function WorkflowPane() {
             Tooltip,
           }}
           scope={{
-            getTriggersOptions,
-            useWorkflowSyncAction,
+            useTriggersOptions,
+            useWorkflowSyncReaction,
+            useSyncAction,
             useRefreshActionProps,
+            useRevisionAction,
           }}
         />
       </SchemaComponentContext.Provider>

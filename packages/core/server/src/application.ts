@@ -10,6 +10,7 @@
 import { registerActions } from '@nocobase/actions';
 import { actions as authActions, AuthManager, AuthManagerOptions } from '@nocobase/auth';
 import { Cache, CacheManager, CacheManagerOptions } from '@nocobase/cache';
+import { DataSourceManager, SequelizeCollectionManager, SequelizeDataSource } from '@nocobase/data-source-manager';
 import Database, { CollectionOptions, IDatabaseOptions } from '@nocobase/database';
 import {
   createLogger,
@@ -23,7 +24,17 @@ import {
 } from '@nocobase/logger';
 import { ResourceOptions, Resourcer } from '@nocobase/resourcer';
 import { Telemetry, TelemetryOptions } from '@nocobase/telemetry';
-import { applyMixins, AsyncEmitter, importModule, Toposort, ToposortOptions } from '@nocobase/utils';
+
+import { LockManager, LockManagerOptions } from '@nocobase/lock-manager';
+import {
+  applyMixins,
+  AsyncEmitter,
+  importModule,
+  Toposort,
+  ToposortOptions,
+  wrapMiddlewareWithLogging,
+} from '@nocobase/utils';
+
 import { Command, CommandOptions, ParseOptions } from 'commander';
 import { randomUUID } from 'crypto';
 import glob from 'glob';
@@ -33,7 +44,7 @@ import Koa, { DefaultContext as KoaDefaultContext, DefaultState as KoaDefaultSta
 import compose from 'koa-compose';
 import lodash from 'lodash';
 import { RecordableHistogram } from 'node:perf_hooks';
-import { basename, resolve } from 'path';
+import path, { basename, resolve } from 'path';
 import semver from 'semver';
 import { createACL } from './acl';
 import { AppCommand } from './app-command';
@@ -52,15 +63,19 @@ import {
 } from './helper';
 import { ApplicationVersion } from './helpers/application-version';
 import { Locale } from './locale';
-import { Plugin } from './plugin';
-import { InstallOptions, PluginManager } from './plugin-manager';
-import { DataSourceManager, SequelizeDataSource } from '@nocobase/data-source-manager';
-import packageJson from '../package.json';
 import { MainDataSource } from './main-data-source';
-import validateFilterParams from './middlewares/validate-filter-params';
-import path from 'path';
 import { parseVariables } from './middlewares';
 import { dataTemplate } from './middlewares/data-template';
+import validateFilterParams from './middlewares/validate-filter-params';
+import { Plugin } from './plugin';
+import { InstallOptions, PluginManager } from './plugin-manager';
+import { createPubSubManager, PubSubManager, PubSubManagerOptions } from './pub-sub-manager';
+import { SyncMessageManager } from './sync-message-manager';
+
+import packageJson from '../package.json';
+import { ServiceContainer } from './service-container';
+import { availableActions } from './acl/available-action';
+import { AuditManager } from './audit-manager';
 
 export type PluginType = string | typeof Plugin;
 export type PluginConfiguration = PluginType | [PluginType, any];
@@ -96,6 +111,8 @@ export interface ApplicationOptions {
    */
   resourcer?: ResourceManagerOptions;
   resourceManager?: ResourceManagerOptions;
+  pubSubManager?: PubSubManagerOptions;
+  syncMessageManager?: any;
   bodyParser?: any;
   cors?: any;
   dataWrapping?: boolean;
@@ -110,11 +127,15 @@ export interface ApplicationOptions {
   pmSock?: string;
   name?: string;
   authManager?: AuthManagerOptions;
+  auditManager?: AuditManager;
+  lockManager?: LockManagerOptions;
+
   /**
    * @internal
    */
   perfHooks?: boolean;
   telemetry?: AppTelemetryOptions;
+  skipSupervisor?: boolean;
 }
 
 export interface DefaultState extends KoaDefaultState {
@@ -211,21 +232,22 @@ export class Application<StateT = DefaultState, ContextT = DefaultContext> exten
    * @internal
    */
   public perfHistograms = new Map<string, RecordableHistogram>();
+  /**
+   * @internal
+   */
+  public pubSubManager: PubSubManager;
+  public syncMessageManager: SyncMessageManager;
+  public requestLogger: Logger;
   protected plugins = new Map<string, Plugin>();
   protected _appSupervisor: AppSupervisor = AppSupervisor.getInstance();
-  protected _started: boolean;
   private _authenticated = false;
   private _maintaining = false;
   private _maintainingCommandStatus: MaintainingCommandStatus;
   private _maintainingStatusBeforeCommand: MaintainingCommandStatus | null;
   private _actionCommand: Command;
 
-  /**
-   * @internal
-   */
-  public requestLogger: Logger;
-  private sqlLogger: Logger;
-  protected _logger: SystemLogger;
+  public container = new ServiceContainer();
+  public lockManager: LockManager;
 
   constructor(public options: ApplicationOptions) {
     super();
@@ -233,11 +255,36 @@ export class Application<StateT = DefaultState, ContextT = DefaultContext> exten
     this.rawOptions = this.name == 'main' ? lodash.cloneDeep(options) : {};
     this.init();
 
-    this._appSupervisor.addApp(this);
+    if (!options.skipSupervisor) {
+      this._appSupervisor.addApp(this);
+    }
   }
+
+  private static staticCommands = [];
+
+  static addCommand(callback: (app: Application) => void) {
+    this.staticCommands.push(callback);
+  }
+
+  private _sqlLogger: Logger;
+
+  get sqlLogger() {
+    return this._sqlLogger;
+  }
+
+  protected _logger: SystemLogger;
 
   get logger() {
     return this._logger;
+  }
+
+  protected _started: Date | null = null;
+
+  /**
+   * @experimental
+   */
+  get started() {
+    return this._started;
   }
 
   get log() {
@@ -341,6 +388,11 @@ export class Application<StateT = DefaultState, ContextT = DefaultContext> exten
     return this._authManager;
   }
 
+  protected _auditManager: AuditManager;
+  get auditManager() {
+    return this._auditManager;
+  }
+
   protected _locales: Locale;
 
   /**
@@ -422,6 +474,10 @@ export class Application<StateT = DefaultState, ContextT = DefaultContext> exten
     return packageJson.version;
   }
 
+  getPackageVersion() {
+    return packageJson.version;
+  }
+
   /**
    * This method is deprecated and should not be used.
    * Use {@link #this.pm.addPreset()} instead.
@@ -437,7 +493,7 @@ export class Application<StateT = DefaultState, ContextT = DefaultContext> exten
     middleware: Koa.Middleware<StateT & NewStateT, ContextT & NewContextT>,
     options?: ToposortOptions,
   ) {
-    this.middleware.add(middleware, options);
+    this.middleware.add(wrapMiddlewareWithLogging(middleware, this.logger), options);
     return this;
   }
 
@@ -506,6 +562,10 @@ export class Application<StateT = DefaultState, ContextT = DefaultContext> exten
       await this.cacheManager.close();
     }
 
+    if (this.pubSubManager) {
+      await this.pubSubManager.close();
+    }
+
     if (this.telemetry.started) {
       await this.telemetry.shutdown();
     }
@@ -520,6 +580,11 @@ export class Application<StateT = DefaultState, ContextT = DefaultContext> exten
     }
 
     this._loaded = false;
+  }
+
+  async createCacheManager() {
+    this._cacheManager = await createCacheManager(this, this.options.cacheManager);
+    return this._cacheManager;
   }
 
   async load(options?: LoadOptions) {
@@ -548,7 +613,11 @@ export class Application<StateT = DefaultState, ContextT = DefaultContext> exten
       }
     }
 
-    this._cacheManager = await createCacheManager(this, this.options.cacheManager);
+    if (this.cacheManager) {
+      await this.cacheManager.close();
+    }
+
+    this._cacheManager = await this.createCacheManager();
 
     this.log.debug('init plugins');
     this.setMaintainingMessage('init plugins');
@@ -564,10 +633,12 @@ export class Application<StateT = DefaultState, ContextT = DefaultContext> exten
 
     // Telemetry is initialized after beforeLoad hook
     // since some configuration may be registered in beforeLoad hook
-    this.telemetry.init();
-    if (this.options.telemetry?.enabled) {
-      // Start collecting telemetry data if enabled
-      this.telemetry.start();
+    if (!this.telemetry.started) {
+      this.telemetry.init();
+      if (this.options.telemetry?.enabled) {
+        // Start collecting telemetry data if enabled
+        this.telemetry.start();
+      }
     }
 
     await this.pm.load(options);
@@ -705,9 +776,11 @@ export class Application<StateT = DefaultState, ContextT = DefaultContext> exten
 
     try {
       const commandName = options?.from === 'user' ? argv[0] : argv[2];
+
       if (!this.cli.hasCommand(commandName)) {
         await this.pm.loadCommands();
       }
+
       const command = await this.cli.parseAsync(argv, options);
 
       this.setMaintaining({
@@ -755,7 +828,7 @@ export class Application<StateT = DefaultState, ContextT = DefaultContext> exten
       return;
     }
 
-    this._started = true;
+    this._started = new Date();
 
     if (options.checkInstall && !(await this.isInstalled())) {
       throw new ApplicationNotInstall(
@@ -791,7 +864,7 @@ export class Application<StateT = DefaultState, ContextT = DefaultContext> exten
   }
 
   async isStarted() {
-    return this._started;
+    return Boolean(this._started);
   }
 
   /**
@@ -812,7 +885,7 @@ export class Application<StateT = DefaultState, ContextT = DefaultContext> exten
 
     this.log.info('restarting...');
 
-    this._started = false;
+    this._started = null;
     await this.emitAsync('beforeStop');
     await this.reload(options);
     await this.start(options);
@@ -862,7 +935,7 @@ export class Application<StateT = DefaultState, ContextT = DefaultContext> exten
 
     this.stopped = true;
     log.info(`app has stopped`, { method: 'stop' });
-    this._started = false;
+    this._started = null;
   }
 
   async destroy(options: any = {}) {
@@ -897,7 +970,7 @@ export class Application<StateT = DefaultState, ContextT = DefaultContext> exten
     await this.reInit();
     await this.db.sync();
     await this.load({ hooks: false });
-
+    this._loaded = false;
     this.log.debug('emit beforeInstall', { method: 'install' });
     this.setMaintainingMessage('call beforeInstall hook...');
     await this.emitAsync('beforeInstall', this, options);
@@ -1071,12 +1144,14 @@ export class Application<StateT = DefaultState, ContextT = DefaultContext> exten
       // Due to the use of custom log levels,
       // we have to use any type here until Winston updates the type definitions.
     }) as any;
+
     this.requestLogger = createLogger({
       dirname: getLoggerFilePath(this.name),
       filename: 'request',
       ...(options?.request || {}),
     });
-    this.sqlLogger = this.createLogger({
+
+    this._sqlLogger = this.createLogger({
       filename: 'sql',
       level: 'debug',
     });
@@ -1085,7 +1160,7 @@ export class Application<StateT = DefaultState, ContextT = DefaultContext> exten
   protected closeLogger() {
     this.log?.close();
     this.requestLogger?.close();
-    this.sqlLogger?.close();
+    this._sqlLogger?.close();
   }
 
   protected init() {
@@ -1108,6 +1183,12 @@ export class Application<StateT = DefaultState, ContextT = DefaultContext> exten
 
     this._cli = this.createCLI();
     this._i18n = createI18n(options);
+    this.pubSubManager = createPubSubManager(this, options.pubSubManager);
+    this.syncMessageManager = new SyncMessageManager(this, options.syncMessageManager);
+    this.lockManager = new LockManager({
+      defaultAdapter: process.env.LOCK_ADAPTER_DEFAULT,
+      ...options.lockManager,
+    });
     this.context.db = this.db;
 
     /**
@@ -1139,9 +1220,19 @@ export class Application<StateT = DefaultState, ContextT = DefaultContext> exten
       ...(this.options.authManager || {}),
     });
 
+    this._auditManager = new AuditManager();
+
     this.resourceManager.define({
       name: 'auth',
       actions: authActions,
+    });
+
+    this._dataSourceManager.afterAddDataSource((dataSource) => {
+      if (dataSource.collectionManager instanceof SequelizeCollectionManager) {
+        for (const [actionName, actionParams] of Object.entries(availableActions)) {
+          dataSource.acl.setAvailableAction(actionName, actionParams);
+        }
+      }
     });
 
     this._dataSourceManager.use(this._authManager.middleware(), { tag: 'auth' });
@@ -1151,6 +1242,7 @@ export class Application<StateT = DefaultState, ContextT = DefaultContext> exten
       group: 'parseVariables',
       after: 'acl',
     });
+
     this._dataSourceManager.use(dataTemplate, { group: 'dataTemplate', after: 'acl' });
 
     this._locales = new Locale(createAppProxy(this));
@@ -1168,6 +1260,10 @@ export class Application<StateT = DefaultState, ContextT = DefaultContext> exten
     registerCli(this);
 
     this._version = new ApplicationVersion(this);
+
+    for (const callback of Application.staticCommands) {
+      callback(this);
+    }
   }
 
   protected createMainDataSource(options: ApplicationOptions) {
@@ -1189,15 +1285,26 @@ export class Application<StateT = DefaultState, ContextT = DefaultContext> exten
   }
 
   protected createDatabase(options: ApplicationOptions) {
-    const logging = (msg: any) => {
+    const logging = (...args) => {
+      let msg = args[0];
+
       if (typeof msg === 'string') {
         msg = msg.replace(/[\r\n]/gm, '').replace(/\s+/g, ' ');
       }
+
       if (msg.includes('INSERT INTO')) {
         msg = msg.substring(0, 2000) + '...';
       }
-      this.sqlLogger.debug({ message: msg, app: this.name, reqId: this.context.reqId });
+
+      const content: any = { message: msg, app: this.name, reqId: this.context.reqId };
+
+      if (args[1] && typeof args[1] === 'number') {
+        content.executeTime = args[1];
+      }
+
+      this._sqlLogger.debug(content);
     };
+
     const dbOptions = options.database instanceof Database ? options.database.options : options.database;
     const db = new Database({
       ...dbOptions,
@@ -1207,6 +1314,11 @@ export class Application<StateT = DefaultState, ContextT = DefaultContext> exten
       },
       logger: this._logger.child({ module: 'database' }),
     });
+
+    // NOTE: to avoid listener number warning (default to 10)
+    // See: https://nodejs.org/api/events.html#emittersetmaxlistenersn
+    db.setMaxListeners(100);
+
     return db;
   }
 }

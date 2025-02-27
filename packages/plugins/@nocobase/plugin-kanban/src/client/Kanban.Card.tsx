@@ -9,21 +9,29 @@
 
 import { css } from '@emotion/css';
 import { FormLayout } from '@formily/antd-v5';
-import { observer, RecursionField, useFieldSchema } from '@formily/react';
+import { createForm } from '@formily/core';
+import { RecursionField, useFieldSchema } from '@formily/react';
 import {
-  ActionContextProvider,
   DndContext,
-  RecordProvider,
+  FormProvider,
+  getCardItemSchema,
+  PopupContextProvider,
   useCollection,
-  useCollectionParentRecordData,
+  useCollectionRecordData,
+  usePopupSettings,
+  usePopupUtils,
   VariablePopupRecordProvider,
 } from '@nocobase/client';
+import { Schema } from '@nocobase/utils';
 import { Card } from 'antd';
 import React, { useCallback, useContext, useMemo, useState } from 'react';
 import { KanbanCardContext } from './context';
-import { useKanbanTranslation } from './locale';
 
 const cardCss = css`
+  text-wrap: wrap;
+  word-break: break-all;
+  word-wrap: break-word;
+
   .ant-card-body {
     padding: 16px;
   }
@@ -33,16 +41,6 @@ const cardCss = css`
     &:last-child {
       margin-top: 0;
     }
-  }
-  .ant-description-input {
-    text-overflow: ellipsis;
-    width: 100%;
-    overflow: hidden;
-  }
-  .ant-description-textarea {
-    text-overflow: ellipsis;
-    width: 100%;
-    overflow: hidden;
   }
   .ant-formily-item {
     margin-bottom: 12px;
@@ -70,77 +68,115 @@ const cardCss = css`
 const MemorizedRecursionField = React.memo(RecursionField);
 MemorizedRecursionField.displayName = 'MemorizedRecursionField';
 
-export const KanbanCard: any = observer(
-  () => {
-    const { t } = useKanbanTranslation();
-    const collection = useCollection();
-    const { setDisableCardDrag, cardViewerSchema, card, cardField, columnIndex, cardIndex } =
-      useContext(KanbanCardContext);
-    const parentRecordData = useCollectionParentRecordData();
-    const fieldSchema = useFieldSchema();
-    const [visible, setVisible] = useState(false);
-    const handleCardClick = useCallback((e: React.MouseEvent) => {
+export const KanbanCard: any = () => {
+  const collection = useCollection();
+  const { setDisableCardDrag } = useContext(KanbanCardContext) || {};
+  const fieldSchema = useFieldSchema();
+  const { openPopup, getPopupSchemaFromSchema } = usePopupUtils();
+  const recordData = useCollectionRecordData();
+  const popupSchema = getPopupSchemaFromSchema(fieldSchema) || getPopupSchemaFromParent(fieldSchema);
+  const [visible, setVisible] = useState(false);
+  const { isPopupVisibleControlledByURL } = usePopupSettings();
+  const handleCardClick = useCallback(
+    (e: React.MouseEvent) => {
       const targetElement = e.target as Element; // 将事件目标转换为Element类型
       const currentTargetElement = e.currentTarget as Element;
       if (currentTargetElement.contains(targetElement)) {
-        setVisible(true);
+        if (!isPopupVisibleControlledByURL()) {
+          setVisible(true);
+        } else {
+          openPopup({
+            popupUidUsedInURL: popupSchema?.['x-uid'],
+          });
+        }
         e.stopPropagation();
       } else {
         e.stopPropagation();
       }
-    }, []);
-    const cardStyle = useMemo(() => {
-      return {
-        cursor: 'pointer',
-        overflow: 'hidden',
-      };
-    }, []);
+    },
+    [openPopup, popupSchema],
+  );
+  const cardStyle = useMemo(() => {
+    return {
+      cursor: 'pointer',
+      overflow: 'hidden',
+    };
+  }, []);
 
-    const onDragStart = useCallback(() => {
-      setDisableCardDrag(true);
-    }, []);
-    const onDragEnd = useCallback(() => {
-      setDisableCardDrag(false);
-    }, []);
+  const form = useMemo(() => {
+    return createForm({
+      values: recordData,
+    });
+  }, [recordData]);
 
-    const actionContextValue = useMemo(() => {
-      return {
-        openMode: fieldSchema['x-component-props']?.['openMode'] || 'drawer',
-        openSize: fieldSchema['x-component-props']?.['openSize'],
-        visible,
-        setVisible,
-      };
-    }, [fieldSchema, visible]);
+  const onDragStart = useCallback(() => {
+    setDisableCardDrag?.(true);
+  }, [setDisableCardDrag]);
+  const onDragEnd = useCallback(() => {
+    setDisableCardDrag?.(false);
+  }, [setDisableCardDrag]);
 
-    const basePath = useMemo(
-      () => cardField.address.concat(`${columnIndex}.cards.${cardIndex}`),
-      [cardField, columnIndex, cardIndex],
-    );
-    const cardViewerBasePath = useMemo(
-      () => cardField.address.concat(`${columnIndex}.cardViewer.${cardIndex}`),
-      [cardField, columnIndex, cardIndex],
-    );
+  // if not wrapped, only Tab component's content will be rendered, Drawer component's content will not be rendered
+  const wrappedPopupSchema = useMemo(() => {
+    return {
+      type: 'void',
+      properties: {
+        drawer: popupSchema,
+      },
+    };
+  }, [popupSchema]);
+  const cardItemSchema = getCardItemSchema?.(fieldSchema);
+  const {
+    layout = 'vertical',
+    labelAlign = 'left',
+    labelWidth = 120,
+    labelWrap = true,
+  } = cardItemSchema?.['x-component-props'] || {};
 
-    return (
-      <>
-        <Card onClick={handleCardClick} bordered={false} hoverable style={cardStyle} className={cardCss}>
-          <DndContext onDragStart={onDragStart} onDragEnd={onDragEnd}>
-            <FormLayout layout={'vertical'}>
-              <MemorizedRecursionField basePath={basePath} schema={fieldSchema} onlyRenderProperties />
-            </FormLayout>
-          </DndContext>
-        </Card>
-        {cardViewerSchema && (
-          <ActionContextProvider value={actionContextValue}>
-            <RecordProvider record={card} parent={parentRecordData}>
-              <VariablePopupRecordProvider recordData={card} collection={collection}>
-                <MemorizedRecursionField basePath={cardViewerBasePath} schema={cardViewerSchema} onlyRenderProperties />
-              </VariablePopupRecordProvider>
-            </RecordProvider>
-          </ActionContextProvider>
-        )}
-      </>
-    );
-  },
-  { displayName: 'KanbanCard' },
-);
+  return (
+    <>
+      <Card onClick={handleCardClick} bordered={false} hoverable style={cardStyle} className={cardCss}>
+        <DndContext onDragStart={onDragStart} onDragEnd={onDragEnd}>
+          <FormLayout
+            layout={layout}
+            labelAlign={labelAlign}
+            labelWidth={layout === 'horizontal' ? labelWidth : null}
+            labelWrap={labelWrap}
+          >
+            <FormProvider form={form}>
+              <MemorizedRecursionField schema={fieldSchema} onlyRenderProperties />
+            </FormProvider>
+          </FormLayout>
+        </DndContext>
+      </Card>
+      <PopupContextProvider visible={visible} setVisible={setVisible}>
+        <VariablePopupRecordProvider recordData={recordData} collection={collection}>
+          <MemorizedRecursionField schema={wrappedPopupSchema} />
+        </VariablePopupRecordProvider>
+      </PopupContextProvider>
+    </>
+  );
+};
+
+function getPopupSchemaFromParent(fieldSchema: Schema) {
+  if (fieldSchema.parent?.properties?.cardViewer?.properties?.drawer) {
+    return fieldSchema.parent.properties.cardViewer.properties.drawer;
+  }
+
+  const cardSchema = findSchemaByUid(fieldSchema['x-uid'], fieldSchema.root);
+  return cardSchema.parent.properties.cardViewer.properties.drawer;
+}
+
+function findSchemaByUid(uid: string, rootSchema: Schema, resultRef: { value: Schema } = { value: null }) {
+  resultRef = resultRef || {
+    value: null,
+  };
+  rootSchema.mapProperties((schema) => {
+    if (schema['x-uid'] === uid) {
+      resultRef.value = schema;
+    } else {
+      findSchemaByUid(uid, schema, resultRef);
+    }
+  });
+  return resultRef.value;
+}

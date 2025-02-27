@@ -18,12 +18,14 @@ import {
   SchemaSettingsSwitchItem,
   SchemaSettingsTemplate,
   removeNullCondition,
+  useBlockTemplateContext,
   useCollection,
   useCollectionManager_deprecated,
   useDesignable,
   useFormBlockContext,
+  usePopupSettings,
 } from '@nocobase/client';
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useTranslation } from '../../locale';
 import { useCalendarBlockContext } from '../schema-initializer/CalendarBlockProvider';
 
@@ -99,6 +101,120 @@ export const calendarBlockSettings = new SchemaSettings({
       },
     },
     {
+      name: 'colorField',
+      Component: SchemaSettingsSelectItem,
+      useComponentProps() {
+        const { t } = useTranslation();
+        const fieldSchema = useFieldSchema();
+        const fieldNames = fieldSchema?.['x-decorator-props']?.['fieldNames'] || {};
+        const { service } = useCalendarBlockContext();
+        const { getCollectionFieldsOptions } = useCollectionManager_deprecated();
+        const { name } = useCollection();
+        const field = useField();
+        const { dn } = useDesignable();
+        const fliedList = getCollectionFieldsOptions(name, 'string');
+        const filteredItems = [
+          { label: t('Not selected'), value: '' },
+          ...fliedList.filter((item) => item.interface === 'radioGroup' || item.interface === 'select'),
+        ];
+        return {
+          title: t('Background color field'),
+          value: fieldNames.colorFieldName || '',
+          options: filteredItems,
+          onChange: (colorFieldName: string) => {
+            const fieldNames = fieldSchema['x-decorator-props']?.fieldNames || {};
+            fieldNames.colorFieldName = colorFieldName;
+            field.decoratorProps.fieldNames = fieldNames;
+            fieldSchema['x-decorator-props'].fieldNames = fieldNames;
+            service.refresh();
+            dn.emit('patch', {
+              schema: {
+                ['x-uid']: fieldSchema['x-uid'],
+                'x-decorator-props': fieldSchema['x-decorator-props'],
+              },
+            });
+            dn.refresh();
+          },
+        };
+      },
+    },
+    {
+      name: 'defaultView',
+      Component: SchemaSettingsSelectItem,
+      useComponentProps() {
+        const { t } = useTranslation();
+        const fieldSchema = useFieldSchema();
+        const field = useField();
+        const { dn } = useDesignable();
+        return {
+          title: t('Default view'),
+          value: field['decoratorProps']['defaultView'] || 'month',
+          options: [
+            { value: 'month', label: t('Month') },
+            { value: 'week', label: t('Week') },
+            { value: 'day', label: t('Day') },
+          ],
+          onChange: (v) => {
+            field.decoratorProps.defaultView = v;
+            fieldSchema['x-decorator-props']['defaultView'] = v;
+            dn.emit('patch', {
+              schema: {
+                ['x-uid']: fieldSchema['x-uid'],
+                'x-decorator-props': field.decoratorProps,
+              },
+            });
+            dn.refresh();
+          },
+        };
+      },
+    },
+    {
+      name: 'eventOpenMode',
+      Component: SchemaSettingsSelectItem,
+      useComponentProps() {
+        const { t } = useTranslation();
+        const fieldSchema = useFieldSchema();
+        const field = useField();
+        const { dn } = useDesignable();
+        const { isPopupVisibleControlledByURL } = usePopupSettings();
+        const eventSchema = Object.values(fieldSchema['properties'])?.[0]?.['properties']['event'];
+        const modeOptions = useMemo(() => {
+          if (isPopupVisibleControlledByURL()) {
+            return [
+              { label: t('Drawer'), value: 'drawer' },
+              { label: t('Dialog'), value: 'modal' },
+              { label: t('Page'), value: 'page' },
+            ];
+          }
+
+          return [
+            { label: t('Drawer'), value: 'drawer' },
+            { label: t('Dialog'), value: 'modal' },
+          ];
+        }, [t, isPopupVisibleControlledByURL()]);
+        return {
+          title: t('Event open mode'),
+          value: eventSchema['x-component-props']?.['openMode'] || 'drawer',
+          options: modeOptions,
+          onChange: (v) => {
+            if (eventSchema['x-component-props']) {
+              eventSchema['x-component-props']['openMode'] = v;
+            } else {
+              eventSchema['x-component-props'] = {};
+              eventSchema['x-component-props']['openMode'] = v;
+            }
+            dn.emit('patch', {
+              schema: {
+                ['x-uid']: eventSchema['x-uid'],
+                'x-component-props': eventSchema['x-component-props'],
+              },
+            });
+            dn.refresh();
+          },
+        };
+      },
+    },
+    {
       name: 'showLunar',
       Component: ShowLunarDesignerItem,
     },
@@ -117,7 +233,7 @@ export const calendarBlockSettings = new SchemaSettings({
         return {
           title: t('Start date field'),
           value: fieldNames.start,
-          options: getCollectionFieldsOptions(name, 'date', {
+          options: getCollectionFieldsOptions(name, ['date', 'datetime', 'dateOnly', 'datetimeNoTz', 'unixTimestamp'], {
             association: ['o2o', 'obo', 'oho', 'm2o'],
           }),
           onChange: (start) => {
@@ -152,7 +268,7 @@ export const calendarBlockSettings = new SchemaSettings({
         return {
           title: t('End date field'),
           value: fieldNames.end,
-          options: getCollectionFieldsOptions(name, 'date', {
+          options: getCollectionFieldsOptions(name, ['date', 'datetime', 'dateOnly', 'datetimeNoTz', 'unixTimestamp'], {
             association: ['o2o', 'obo', 'oho', 'm2o'],
           }),
           onChange: (end) => {
@@ -212,10 +328,11 @@ export const calendarBlockSettings = new SchemaSettings({
       useComponentProps() {
         const { name } = useCollection();
         const fieldSchema = useFieldSchema();
+        const { componentNamePrefix } = useBlockTemplateContext();
         const defaultResource =
           fieldSchema?.['x-decorator-props']?.resource || fieldSchema?.['x-decorator-props']?.association;
         return {
-          componentName: 'Calendar',
+          componentName: `${componentNamePrefix}Calendar`,
           collectionName: name,
           resourceName: defaultResource,
         };

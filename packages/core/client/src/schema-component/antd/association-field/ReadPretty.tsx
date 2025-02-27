@@ -7,7 +7,7 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
-import { observer } from '@formily/react';
+import { observer, useField } from '@formily/react';
 import React from 'react';
 import { AssociationFieldProvider } from './AssociationFieldProvider';
 import { FileManageReadPretty } from './FileManager';
@@ -17,27 +17,30 @@ import { ReadPrettyInternalTag } from './InternalTag';
 import { ReadPrettyInternalViewer } from './InternalViewer';
 import { useAssociationFieldContext } from './hooks';
 
-const ReadPrettyAssociationField = observer(
-  (props: any) => {
-    const { currentMode } = useAssociationFieldContext();
-    return (
-      <>
-        {['Select', 'Picker', 'CascadeSelect'].includes(currentMode) && <ReadPrettyInternalViewer {...props} />}
-        {currentMode === 'Tag' && <ReadPrettyInternalTag {...props} />}
-        {currentMode === 'Nester' && <InternalNester {...props} />}
-        {currentMode === 'SubTable' && <InternalSubTable {...props} />}
-        {currentMode === 'FileManager' && <FileManageReadPretty {...props} />}
-      </>
-    );
-  },
-  { displayName: 'ReadPrettyAssociationField' },
-);
+const ReadPrettyAssociationField = (props: any) => {
+  const { currentMode } = useAssociationFieldContext();
+  return (
+    <>
+      {['Select', 'Picker', 'CascadeSelect'].includes(currentMode) && <ReadPrettyInternalViewer {...props} />}
+      {currentMode === 'Tag' && <ReadPrettyInternalTag {...props} />}
+      {currentMode === 'Nester' && <InternalNester {...props} />}
+      {currentMode === 'SubTable' && <InternalSubTable {...props} />}
+      {currentMode === 'FileManager' && <FileManageReadPretty {...props} />}
+    </>
+  );
+};
 
 export const ReadPretty = observer(
   (props) => {
+    // Using props.value directly causes issues - UI won't update when field.value or field.initialValue changes
+    const field: any = useField();
+    // Don't inline this - we need to access field.initialValue separately to ensure proper dependency tracking
+    const defaultValue = field.initialValue;
+    const value = field.value || defaultValue;
+
     return (
       <AssociationFieldProvider>
-        <ReadPrettyAssociationField {...props} />
+        <ReadPrettyAssociationField {...props} value={value} />
       </AssociationFieldProvider>
     );
   },

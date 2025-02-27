@@ -8,10 +8,9 @@
  */
 
 import React from 'react';
-import { useParams } from 'react-router-dom';
-import { RemoteSchemaComponent } from '../../../';
+import { RemoteSchemaComponent, useCurrentPageUid } from '../../../';
 
-export function RouteSchemaComponent(props: any) {
-  const params = useParams<any>();
-  return <RemoteSchemaComponent onlyRenderProperties uid={params.name} />;
+export function RouteSchemaComponent() {
+  const currentPageUid = useCurrentPageUid();
+  return <RemoteSchemaComponent onlyRenderProperties uid={currentPageUid} />;
 }

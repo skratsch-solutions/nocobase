@@ -12,51 +12,65 @@ import { observer, RecursionField, useField, useFieldSchema } from '@formily/rea
 import { Tabs as AntdTabs, TabPaneProps, TabsProps } from 'antd';
 import classNames from 'classnames';
 import React, { useMemo } from 'react';
+import { useSchemaInitializerRender } from '../../../application';
+import { withDynamicSchemaProps } from '../../../hoc/withDynamicSchemaProps';
 import { Icon } from '../../../icon';
 import { DndContext, SortableItem } from '../../common';
+import { SchemaComponent } from '../../core';
 import { useDesigner } from '../../hooks/useDesigner';
 import { useTabsContext } from './context';
 import { TabsDesigner } from './Tabs.Designer';
-import { useSchemaInitializerRender } from '../../../application';
-import { SchemaComponent } from '../../core';
 
-export const Tabs: any = observer(
-  (props: TabsProps) => {
-    const fieldSchema = useFieldSchema();
-    const { render } = useSchemaInitializerRender(fieldSchema['x-initializer'], fieldSchema['x-initializer-props']);
-    const contextProps = useTabsContext();
-    const { PaneRoot = React.Fragment as React.FC<any> } = contextProps;
+const MemoizeRecursionField = React.memo(RecursionField);
+MemoizeRecursionField.displayName = 'MemoizeRecursionField';
 
-    const items = useMemo(() => {
-      const result = fieldSchema.mapProperties((schema, key: string) => {
-        return {
-          key,
-          label: <RecursionField name={key} schema={schema} onlyRenderSelf />,
-          children: (
-            <PaneRoot key={key} {...(PaneRoot !== React.Fragment ? { active: key === contextProps.activeKey } : {})}>
-              <SchemaComponent name={key} schema={schema} onlyRenderProperties distributed />
-            </PaneRoot>
-          ),
-        };
-      });
+const MemoizeTabs = React.memo(AntdTabs);
+MemoizeTabs.displayName = 'MemoizeTabs';
 
-      return result;
-    }, [fieldSchema.mapProperties((s, key) => key).join()]);
+export const Tabs: any = React.memo((props: TabsProps) => {
+  const fieldSchema = useFieldSchema();
+  const { render } = useSchemaInitializerRender(fieldSchema['x-initializer'], fieldSchema['x-initializer-props']);
+  const contextProps = useTabsContext();
+  const { PaneRoot = React.Fragment as React.FC<any> } = contextProps;
 
-    return (
-      <DndContext>
-        <AntdTabs
-          {...contextProps}
-          destroyInactiveTabPane
-          tabBarExtraContent={render()}
-          style={props.style}
-          items={items}
-        />
-      </DndContext>
-    );
-  },
-  { displayName: 'Tabs' },
-);
+  const items = useMemo(() => {
+    const result = fieldSchema.mapProperties((schema, key: string) => {
+      return {
+        key,
+        label: <MemoizeRecursionField name={key} schema={schema} onlyRenderSelf />,
+        children: (
+          <PaneRoot key={key} {...(PaneRoot !== React.Fragment ? { active: key === contextProps.activeKey } : {})}>
+            <SchemaComponent name={key} schema={schema} onlyRenderProperties distributed />
+          </PaneRoot>
+        ),
+      };
+    });
+
+    return result;
+  }, [fieldSchema.mapProperties((s, key) => key).join()]);
+
+  const tabBarExtraContent = useMemo(
+    () => ({
+      right: render(),
+      left: contextProps?.tabBarExtraContent,
+    }),
+    [contextProps?.tabBarExtraContent, render],
+  );
+
+  return (
+    <DndContext>
+      <MemoizeTabs
+        {...contextProps}
+        destroyInactiveTabPane
+        tabBarExtraContent={tabBarExtraContent}
+        style={props.style}
+        items={items}
+      />
+    </DndContext>
+  );
+});
+
+Tabs.displayName = 'Tabs';
 
 const designerCss = css`
   position: relative;
@@ -106,18 +120,27 @@ const designerCss = css`
   }
 `;
 
-Tabs.TabPane = observer(
-  (props: TabPaneProps & { icon?: any }) => {
-    const Designer = useDesigner();
-    const field = useField();
-    return (
-      <SortableItem className={classNames('nb-action-link', designerCss, props.className)}>
-        {props.icon && <Icon style={{ marginRight: 2 }} type={props.icon} />} {props.tab || field.title}
-        <Designer />
-      </SortableItem>
-    );
-  },
-  { displayName: 'Tabs.TabPane' },
+Tabs.TabPane = withDynamicSchemaProps(
+  observer(
+    (props: TabPaneProps & { icon?: any; hidden?: boolean }) => {
+      const Designer = useDesigner();
+      const field = useField();
+
+      if (props.hidden) {
+        return null;
+      }
+
+      return (
+        <SortableItem className={classNames('nb-action-link', designerCss, props.className)}>
+          {props.icon && <Icon style={{ marginRight: 2 }} type={props.icon} />} {props.tab || field.title}
+          <Designer />
+        </SortableItem>
+      );
+    },
+    { displayName: 'Tabs.TabPane' },
+  ),
 );
+
+Tabs.TabPane.displayName = 'Tabs.TabPane';
 
 Tabs.Designer = TabsDesigner;

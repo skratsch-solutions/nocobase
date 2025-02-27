@@ -8,25 +8,29 @@
  */
 
 import { G2PlotChart } from './g2plot';
-import { Pie as G2Pie } from '@ant-design/plots';
+// import { Pie as G2Pie } from '@ant-design/plots';
 import { ChartType, RenderProps } from '../chart';
+
+import { lazy } from '@nocobase/client';
+const { Pie: G2Pie } = lazy(() => import('@ant-design/plots'), 'Pie');
 
 export class Pie extends G2PlotChart {
   constructor() {
-    super({ name: 'pie', title: 'Pie Chart', Component: G2Pie });
+    super({ name: 'pie', title: 'Pie', Component: G2Pie });
     this.config = [
       {
-        property: 'field',
+        configType: 'field',
         name: 'angleField',
         title: 'angleField',
         required: true,
       },
       {
-        property: 'field',
+        configType: 'field',
         name: 'colorField',
         title: 'colorField',
         required: true,
       },
+      'size',
     ];
   }
 

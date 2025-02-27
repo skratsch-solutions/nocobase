@@ -9,7 +9,7 @@
 
 import { createMockServer, MockServer } from '@nocobase/test';
 import { uid } from '@nocobase/utils';
-import XlsxExporter from '../xlsx-exporter';
+import { XlsxExporter } from '../services/xlsx-exporter';
 import XLSX from 'xlsx';
 import fs from 'fs';
 import path from 'path';
@@ -23,12 +23,189 @@ describe('export to xlsx with preset', () => {
 
   beforeEach(async () => {
     app = await createMockServer({
-      plugins: ['nocobase', 'map'],
+      plugins: ['nocobase', 'map', 'field-china-region'],
     });
   });
 
   afterEach(async () => {
     await app.destroy();
+  });
+
+  describe('export with date field', () => {
+    let Post;
+
+    beforeEach(async () => {
+      Post = app.db.collection({
+        name: 'posts',
+        fields: [
+          { type: 'string', name: 'title' },
+          {
+            name: 'datetime',
+            type: 'datetime',
+            interface: 'datetime',
+            uiSchema: {
+              'x-component-props': { picker: 'date', dateFormat: 'YYYY-MM-DD', gmt: false, showTime: false, utc: true },
+              type: 'string',
+              'x-component': 'DatePicker',
+              title: 'dateTz',
+            },
+          },
+          {
+            name: 'dateOnly',
+            type: 'dateOnly',
+            interface: 'date',
+            defaultToCurrentTime: false,
+            onUpdateToCurrentTime: false,
+            timezone: true,
+          },
+          {
+            name: 'datetimeNoTz',
+            type: 'datetimeNoTz',
+            interface: 'datetimeNoTz',
+            uiSchema: {
+              'x-component-props': { picker: 'date', dateFormat: 'YYYY-MM-DD', gmt: false, showTime: false, utc: true },
+              type: 'string',
+              'x-component': 'DatePicker',
+              title: 'dateTz',
+            },
+          },
+          {
+            name: 'unixTimestamp',
+            type: 'unixTimestamp',
+            interface: 'unixTimestamp',
+            uiSchema: {
+              'x-component-props': {
+                picker: 'date',
+                dateFormat: 'YYYY-MM-DD',
+                showTime: true,
+                timeFormat: 'HH:mm:ss',
+              },
+            },
+          },
+        ],
+      });
+
+      await app.db.sync();
+    });
+
+    it('should export with datetime field', async () => {
+      await Post.repository.create({
+        values: {
+          title: 'p1',
+          datetime: '2024-05-10T01:42:35.000Z',
+          dateOnly: '2024-05-10',
+          datetimeNoTz: '2024-01-01 00:00:00',
+          unixTimestamp: '2024-05-10T01:42:35.000Z',
+        },
+      });
+
+      const exporter = new XlsxExporter({
+        collectionManager: app.mainDataSource.collectionManager,
+        collection: Post,
+        chunkSize: 10,
+        columns: [
+          { dataIndex: ['title'], defaultTitle: 'Title' },
+          {
+            dataIndex: ['datetime'],
+            defaultTitle: 'datetime',
+          },
+          {
+            dataIndex: ['dateOnly'],
+            defaultTitle: 'dateOnly',
+          },
+          {
+            dataIndex: ['datetimeNoTz'],
+            defaultTitle: 'datetimeNoTz',
+          },
+          {
+            dataIndex: ['unixTimestamp'],
+            defaultTitle: 'unixTimestamp',
+          },
+        ],
+      });
+
+      const wb = await exporter.run();
+
+      const xlsxFilePath = path.resolve(__dirname, `t_${uid()}.xlsx`);
+
+      try {
+        XLSX.writeFile(wb, xlsxFilePath);
+
+        // read xlsx file
+        const workbook = XLSX.readFile(xlsxFilePath);
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const sheetData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+
+        const firstUser = sheetData[1];
+        expect(firstUser[1]).toEqual('2024-05-10');
+        expect(firstUser[2]).toEqual('2024-05-10');
+        expect(firstUser[3]).toEqual('2024-01-01');
+        expect(firstUser[4]).toEqual('2024-05-10 01:42:35');
+      } finally {
+        fs.unlinkSync(xlsxFilePath);
+      }
+    });
+  });
+
+  it('should export with checkbox field', async () => {
+    const Post = app.db.collection({
+      name: 'posts',
+      fields: [
+        { type: 'string', name: 'title' },
+        {
+          type: 'boolean',
+          name: 'test_field',
+          interface: 'checkbox',
+          uiSchema: {
+            type: 'boolean',
+            'x-component': 'Checkbox',
+          },
+        },
+      ],
+    });
+
+    await app.db.sync();
+
+    await Post.repository.create({
+      values: {
+        title: 'p1',
+        test_field: true,
+      },
+    });
+
+    const exporter = new XlsxExporter({
+      collectionManager: app.mainDataSource.collectionManager,
+      collection: Post,
+      chunkSize: 10,
+      columns: [
+        { dataIndex: ['title'], defaultTitle: 'Title' },
+        {
+          dataIndex: ['test_field'],
+          defaultTitle: 'test_field',
+        },
+      ],
+    });
+
+    const wb = await exporter.run();
+
+    const xlsxFilePath = path.resolve(__dirname, `t_${uid()}.xlsx`);
+
+    try {
+      XLSX.writeFile(wb, xlsxFilePath);
+
+      // read xlsx file
+      const workbook = XLSX.readFile(xlsxFilePath);
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      const sheetData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+
+      const header = sheetData[0];
+      expect(header).toEqual(['Title', 'test_field']);
+
+      const data = sheetData[1];
+      expect(data[1]).toBe('True');
+    } finally {
+      fs.unlinkSync(xlsxFilePath);
+    }
   });
 
   it('should export number field with cell format', async () => {
@@ -38,6 +215,7 @@ describe('export to xlsx with preset', () => {
         { type: 'string', name: 'title' },
         { type: 'integer', name: 'integer' },
         { type: 'float', name: 'float' },
+        { type: 'decimal', name: 'decimal', scale: 3, precision: 12 },
       ],
     });
 
@@ -49,11 +227,13 @@ describe('export to xlsx with preset', () => {
           title: 'p1',
           integer: 123,
           float: 123.456,
+          decimal: 234.567,
         },
         {
           title: 'p2',
           integer: 456,
           float: 456.789,
+          decimal: 345.678,
         },
       ],
     });
@@ -71,6 +251,10 @@ describe('export to xlsx with preset', () => {
         {
           dataIndex: ['float'],
           defaultTitle: 'float',
+        },
+        {
+          dataIndex: ['decimal'],
+          defaultTitle: 'decimal',
         },
       ],
     });
@@ -97,6 +281,10 @@ describe('export to xlsx with preset', () => {
       const cellC2 = firstSheet['C2'];
       expect(cellC2.t).toBe('n');
       expect(cellC2.v).toBe(123.456);
+
+      const cellD2 = firstSheet['D2'];
+      expect(cellD2.t).toBe('n');
+      expect(cellD2.v).toBe(234.567);
     } finally {
       fs.unlinkSync(xlsxFilePath);
     }
@@ -322,6 +510,49 @@ describe('export to xlsx', () => {
 
   afterEach(async () => {
     await app.destroy();
+    vi.unstubAllEnvs();
+  });
+
+  it('should throw error when export field not exists', async () => {
+    const Post = app.db.collection({
+      name: 'posts',
+      fields: [
+        {
+          name: 'title',
+          type: 'string',
+        },
+      ],
+    });
+
+    await app.db.sync();
+
+    await Post.repository.create({
+      values: {
+        title: 'some_title',
+        json: {
+          a: {
+            b: 'c',
+          },
+        },
+      },
+    });
+
+    const exporter = new XlsxExporter({
+      collectionManager: app.mainDataSource.collectionManager,
+      collection: Post,
+      chunkSize: 10,
+      columns: [{ dataIndex: ['json'], defaultTitle: '' }],
+    });
+
+    let error: any;
+    try {
+      await exporter.run({});
+    } catch (e) {
+      error = e;
+    }
+
+    expect(error).toBeDefined();
+    expect(error.message).toContain('not found');
   });
 
   it('should export with json field', async () => {
@@ -406,7 +637,7 @@ describe('export to xlsx', () => {
             title: 'test_date',
           },
           name: 'test_date',
-          type: 'date',
+          type: 'datetime',
           interface: 'datetime',
         },
       ],
@@ -434,11 +665,7 @@ describe('export to xlsx', () => {
       ],
     });
 
-    const wb = await exporter.run({
-      get() {
-        return '+08:00';
-      },
-    });
+    const wb = await exporter.run();
 
     const xlsxFilePath = path.resolve(__dirname, `t_${uid()}.xlsx`);
     try {
@@ -450,7 +677,7 @@ describe('export to xlsx', () => {
       const sheetData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
 
       const firstUser = sheetData[1];
-      expect(firstUser).toEqual(['some_title', '2024-05-10 09:42:35']);
+      expect(firstUser).toEqual(['some_title', '2024-05-10 01:42:35']);
     } finally {
       fs.unlinkSync(xlsxFilePath);
     }
@@ -1002,5 +1229,273 @@ describe('export to xlsx', () => {
     } finally {
       fs.unlinkSync(xlsxFilePath);
     }
+  });
+
+  it('should export with different ui schema in associations', async () => {
+    const User = app.db.collection({
+      name: 'users',
+      fields: [
+        { type: 'string', name: 'name' },
+        { type: 'integer', name: 'age' },
+        {
+          type: 'hasMany',
+          name: 'posts',
+          target: 'posts',
+        },
+        {
+          type: 'belongsToMany',
+          name: 'groups',
+          target: 'groups',
+          through: 'usersGroups',
+        },
+        {
+          name: 'createdAt',
+          type: 'date',
+          interface: 'createdAt',
+          field: 'createdAt',
+          uiSchema: {
+            type: 'datetime',
+            title: '{{t("Created at")}}',
+            'x-component': 'DatePicker',
+            'x-component-props': {},
+            'x-read-pretty': true,
+          },
+        },
+      ],
+    });
+
+    const Post = app.db.collection({
+      name: 'posts',
+      fields: [
+        { type: 'string', name: 'title' },
+        { type: 'belongsTo', name: 'user', target: 'users' },
+      ],
+    });
+
+    const Group = app.db.collection({
+      name: 'groups',
+      fields: [
+        { type: 'string', name: 'name' },
+        {
+          type: 'integer',
+          name: 'testInterface',
+          interface: 'testInterface',
+          title: 'Associations interface 测试',
+          uiSchema: { test: 'testValue' },
+        },
+      ],
+    });
+
+    class TestInterface extends BaseInterface {
+      toString(value, ctx) {
+        return `${this.options.uiSchema.test}.${value}`;
+      }
+    }
+
+    app.db.interfaceManager.registerInterfaceType('testInterface', TestInterface);
+
+    await app.db.sync();
+
+    const [group1, group2, group3] = await Group.repository.create({
+      values: [
+        { name: 'group1', testInterface: 1 },
+        { name: 'group2', testInterface: 2 },
+        { name: 'group3', testInterface: 3 },
+      ],
+    });
+
+    const values = Array.from({ length: 22 }).map((_, index) => {
+      return {
+        name: `user${index}`,
+        age: index % 100,
+        groups: [
+          {
+            id: group1.get('id'),
+          },
+          {
+            id: group2.get('id'),
+          },
+          {
+            id: group3.get('id'),
+          },
+        ],
+        posts: Array.from({ length: 3 }).map((_, postIndex) => {
+          return {
+            title: `post${postIndex}`,
+          };
+        }),
+      };
+    });
+
+    await User.repository.create({
+      values,
+    });
+
+    const exporter = new XlsxExporter({
+      collectionManager: app.mainDataSource.collectionManager,
+      collection: User,
+      chunkSize: 10,
+      columns: [
+        { dataIndex: ['name'], defaultTitle: 'Name' },
+        {
+          dataIndex: ['groups', 'testInterface'],
+          defaultTitle: 'Test Field',
+        },
+      ],
+    });
+
+    const wb = await exporter.run();
+
+    const xlsxFilePath = path.resolve(__dirname, `t_${uid()}.xlsx`);
+    try {
+      await new Promise((resolve, reject) => {
+        XLSX.writeFileAsync(
+          xlsxFilePath,
+          wb,
+          {
+            type: 'array',
+          },
+          () => {
+            resolve(123);
+          },
+        );
+      });
+
+      // read xlsx file
+      const workbook = XLSX.readFile(xlsxFilePath);
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      const sheetData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+
+      const header = sheetData[0];
+      expect(header).toEqual(['Name', 'Associations interface 测试']);
+
+      const firstUser = sheetData[1];
+      expect(firstUser).toEqual(['user0', 'testValue.1,testValue.2,testValue.3']);
+    } finally {
+      fs.unlinkSync(xlsxFilePath);
+    }
+  });
+
+  it('should respect the EXPORT_LIMIT env variable', async () => {
+    vi.stubEnv('EXPORT_LIMIT', '30'); // Set a small limit
+
+    const User = app.db.collection({
+      name: 'users',
+      fields: [
+        { type: 'string', name: 'name' },
+        { type: 'integer', name: 'age' },
+      ],
+    });
+
+    await app.db.sync();
+
+    const values = Array.from({ length: 100 }).map((_, index) => {
+      return {
+        name: `user${index}`,
+        age: index % 100,
+      };
+    });
+
+    await User.model.bulkCreate(values);
+
+    const exporter = new XlsxExporter({
+      collectionManager: app.mainDataSource.collectionManager,
+      collection: User,
+      chunkSize: 10,
+      columns: [
+        { dataIndex: ['name'], defaultTitle: 'Name' },
+        { dataIndex: ['age'], defaultTitle: 'Age' },
+      ],
+    });
+
+    const wb = await exporter.run();
+    const firstSheet = wb.Sheets[wb.SheetNames[0]];
+    const sheetData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+
+    expect(sheetData.length).toBe(31); // 30 users + 1 header
+    expect(sheetData[0]).toEqual(['Name', 'Age']); // header
+    expect(sheetData[1]).toEqual(['user0', 0]); // first user
+    expect(sheetData[30]).toEqual(['user29', 29]); // last user
+  });
+
+  it('should use default EXPORT_LIMIT (2000) when env not set', async () => {
+    const User = app.db.collection({
+      name: 'users',
+      fields: [
+        { type: 'string', name: 'name' },
+        { type: 'integer', name: 'age' },
+      ],
+    });
+
+    await app.db.sync();
+
+    const values = Array.from({ length: 2500 }).map((_, index) => {
+      return {
+        name: `user${index}`,
+        age: index % 100,
+      };
+    });
+
+    await User.model.bulkCreate(values);
+
+    const exporter = new XlsxExporter({
+      collectionManager: app.mainDataSource.collectionManager,
+      collection: User,
+      chunkSize: 10,
+      columns: [
+        { dataIndex: ['name'], defaultTitle: 'Name' },
+        { dataIndex: ['age'], defaultTitle: 'Age' },
+      ],
+    });
+
+    const wb = await exporter.run();
+    const firstSheet = wb.Sheets[wb.SheetNames[0]];
+    const sheetData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+
+    expect(sheetData.length).toBe(2001); // 2000 users + 1 header
+    expect(sheetData[0]).toEqual(['Name', 'Age']); // header
+    expect(sheetData[1]).toEqual(['user0', 0]); // first user
+    expect(sheetData[2000]).toEqual(['user1999', 99]); // last user
+  });
+
+  it('should respect the limit option when exporting data', async () => {
+    const User = app.db.collection({
+      name: 'users',
+      fields: [
+        { type: 'string', name: 'name' },
+        { type: 'integer', name: 'age' },
+      ],
+    });
+
+    await app.db.sync();
+
+    const values = Array.from({ length: 100 }).map((_, index) => {
+      return {
+        name: `user${index}`,
+        age: index % 100,
+      };
+    });
+
+    await User.model.bulkCreate(values);
+
+    const exporter = new XlsxExporter({
+      collectionManager: app.mainDataSource.collectionManager,
+      collection: User,
+      chunkSize: 10,
+      limit: 10,
+      columns: [
+        { dataIndex: ['name'], defaultTitle: 'Name' },
+        { dataIndex: ['age'], defaultTitle: 'Age' },
+      ],
+    });
+
+    const wb = await exporter.run();
+    const firstSheet = wb.Sheets[wb.SheetNames[0]];
+    const sheetData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+
+    expect(sheetData.length).toBe(11); // 10 users + 1 header
+    expect(sheetData[0]).toEqual(['Name', 'Age']); // header
+    expect(sheetData[1]).toEqual(['user0', 0]); // first user
+    expect(sheetData[10]).toEqual(['user9', 9]); // last user
   });
 });

@@ -72,7 +72,7 @@ describe('createCalendarBlockSchema', () => {
                     },
                     "title": "{{t('View record', { ns: 'calendar' })}}",
                     "type": "void",
-                    "x-component": "Action.Drawer",
+                    "x-component": "Action.Container",
                     "x-component-props": {
                       "className": "nb-action-popup",
                     },
@@ -80,6 +80,9 @@ describe('createCalendarBlockSchema', () => {
                 },
                 "type": "void",
                 "x-component": "CalendarV2.Event",
+                "x-component-props": {
+                  "openMode": "drawer",
+                },
               },
               "toolBar": {
                 "type": "void",

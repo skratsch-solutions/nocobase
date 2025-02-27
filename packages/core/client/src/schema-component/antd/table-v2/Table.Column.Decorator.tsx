@@ -8,16 +8,18 @@
  */
 
 import { useField, useFieldSchema } from '@formily/react';
-import React, { useLayoutEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
+  CollectionFieldContext,
   SortableItem,
   useCollection_deprecated,
   useCollectionManager_deprecated,
   useCompile,
   useDesigner,
-  CollectionFieldContext,
   useFlag,
+  useSchemaComponentContext,
 } from '../../../';
+import { useToken } from '../__builtins__';
 import { designerCss } from './Table.Column.ActionBar';
 import { isCollectionFieldComponent } from './utils';
 
@@ -32,21 +34,51 @@ export const useColumnSchema = () => {
     }
     return buf;
   }, null);
+
   if (!fieldSchema) {
     return {};
   }
 
   const collectionField = getField(fieldSchema.name) || getCollectionJoinField(fieldSchema?.['x-collection-field']);
-  return { columnSchema, fieldSchema, collectionField, uiSchema: compile(collectionField?.uiSchema) };
+
+  return {
+    columnSchema,
+    fieldSchema,
+    collectionField,
+    uiSchema: compile(collectionField?.uiSchema),
+  };
+};
+
+export const useTableFieldInstanceList = () => {
+  const columnField = useField();
+  const { fieldSchema } = useColumnSchema();
+  const filedInstanceList = useMemo(() => {
+    if (!fieldSchema || !columnField) {
+      return [];
+    }
+
+    const path = columnField.path?.splice(columnField.path?.length - 1, 1);
+    // TODO: 这里需要优化，性能比较差，在 M2 pro 的机器上这行代码会运行将近 0.1 毫秒
+    return columnField.form.query(`${path.concat(`*.` + fieldSchema.name)}`).map();
+  }, [columnField, fieldSchema]);
+
+  if (!fieldSchema) {
+    return [];
+  }
+
+  return filedInstanceList;
 };
 
 export const TableColumnDecorator = (props) => {
   const Designer = useDesigner();
   const field = useField();
   const { fieldSchema, uiSchema, collectionField } = useColumnSchema();
+  const { designable } = useSchemaComponentContext();
   const compile = useCompile();
   const { isInSubTable } = useFlag() || {};
-  useLayoutEffect(() => {
+  const { token } = useToken();
+
+  useEffect(() => {
     if (field.title) {
       return;
     }
@@ -57,29 +89,32 @@ export const TableColumnDecorator = (props) => {
       field.title = uiSchema?.title;
     }
   }, [uiSchema?.title]);
+
+  if (!designable || Designer.isNullComponent) {
+    return (
+      <CollectionFieldContext.Provider value={collectionField}>
+        <Designer fieldSchema={fieldSchema} uiSchema={uiSchema} collectionField={collectionField} />
+        <span role="button">
+          {fieldSchema?.required && <span className="ant-formily-item-asterisk">*</span>}
+          <span>{field?.title || compile(uiSchema?.title)}</span>
+        </span>
+      </CollectionFieldContext.Provider>
+    );
+  }
+
   return (
     <SortableItem
       className={designerCss({
-        margin: isInSubTable ? '-12px -8px' : '-18px -16px',
-        padding: isInSubTable ? '12px 8px' : '18px 16px',
+        margin: `-${token.margin}px -${token.marginXS}px`,
+        padding: `${token.margin}px ${token.marginXS}px`,
       })}
     >
       <CollectionFieldContext.Provider value={collectionField}>
         <Designer fieldSchema={fieldSchema} uiSchema={uiSchema} collectionField={collectionField} />
-        {/* <RecursionField name={columnSchema.name} schema={columnSchema}/> */}
-        <div role="button">{field?.title || compile(uiSchema?.title)}</div>
-        {/* <div
-        onClick={() => {
-          field.title = uid();
-          // columnSchema.title = field.title = field.title;
-          // refresh();
-          // field.query(`.*.${fieldSchema.name}`).take((f) => {
-          //   f.componentProps.dateFormat = 'YYYY-MM-DD';
-          // });
-        }}
-      >
-        Edit
-      </div> */}
+        <span role="button">
+          {fieldSchema?.required && <span className="ant-formily-item-asterisk">*</span>}
+          <span>{field?.title || compile(uiSchema?.title)}</span>
+        </span>
       </CollectionFieldContext.Provider>
     </SortableItem>
   );

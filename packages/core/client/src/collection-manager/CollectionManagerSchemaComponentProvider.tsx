@@ -7,23 +7,24 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { SchemaComponentOptions } from '..';
-import { CollectionProvider_deprecated, ResourceActionProvider, useDataSourceFromRAC } from '.';
+import { CollectionProvider_deprecated } from './CollectionProvider_deprecated';
+import { ResourceActionProvider, useDataSourceFromRAC } from './ResourceActionProvider';
 import * as hooks from './action-hooks';
-import { DataSourceProvider_deprecated, ds, SubFieldDataSourceProvider_deprecated } from './sub-table';
+import { DataSourceProvider_deprecated, SubFieldDataSourceProvider_deprecated, ds } from './sub-table';
+
+const components = {
+  SubFieldDataSourceProvider_deprecated,
+  DataSourceProvider_deprecated,
+  CollectionProvider_deprecated,
+  ResourceActionProvider,
+};
 
 export const CollectionManagerSchemaComponentProvider: React.FC = (props) => {
+  const scope = useMemo(() => ({ cm: { ...hooks, useDataSourceFromRAC }, ds }), []);
   return (
-    <SchemaComponentOptions
-      scope={{ cm: { ...hooks, useDataSourceFromRAC }, ds }}
-      components={{
-        SubFieldDataSourceProvider_deprecated,
-        DataSourceProvider_deprecated,
-        CollectionProvider_deprecated,
-        ResourceActionProvider,
-      }}
-    >
+    <SchemaComponentOptions scope={scope} components={components}>
       {props.children}
     </SchemaComponentOptions>
   );

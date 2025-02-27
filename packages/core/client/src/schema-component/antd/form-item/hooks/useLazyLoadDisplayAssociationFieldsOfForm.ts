@@ -9,18 +9,17 @@
 
 import { Field } from '@formily/core';
 import { useField, useFieldSchema, useForm } from '@formily/react';
+import { untracked } from '@formily/reactive';
 import { nextTick } from '@nocobase/utils/client';
 import _ from 'lodash';
 import { useEffect, useMemo, useRef } from 'react';
 import { useAssociationNames } from '../../../../block-provider/hooks';
 import { useCollectionManager_deprecated, useCollection_deprecated } from '../../../../collection-manager';
-import { useCollectionRecordData } from '../../../../data-source/collection-record/CollectionRecordProvider';
 import { useFlag } from '../../../../flag-provider';
 import { useVariables } from '../../../../variables';
 import { transformVariableValue } from '../../../../variables/utils/transformVariableValue';
 import { useSubFormValue } from '../../association-field/hooks';
 import { isDisplayField } from '../utils';
-import { untracked } from '@formily/reactive';
 
 /**
  * 用于懒加载 Form 区块中只用于展示的关联字段的值
@@ -32,7 +31,6 @@ const useLazyLoadDisplayAssociationFieldsOfForm = () => {
   const { name } = useCollection_deprecated();
   const { getCollectionJoinField } = useCollectionManager_deprecated();
   const form = useForm();
-  const recordData = useCollectionRecordData();
   const fieldSchema = useFieldSchema();
   const variables = useVariables();
   const field = useField<Field>();
@@ -43,7 +41,7 @@ const useLazyLoadDisplayAssociationFieldsOfForm = () => {
   const schemaName = fieldSchema.name.toString();
 
   // 是否已经预加载了数据（通过 appends 的形式）
-  const hasPreloadData = useMemo(() => hasPreload(recordData, schemaName), [recordData, schemaName]);
+  // const hasPreloadData = useMemo(() => hasPreload(recordData, schemaName), [recordData, schemaName]);
 
   const collectionFieldRef = useRef(null);
   const sourceCollectionFieldRef = useRef(null);
@@ -56,10 +54,8 @@ const useLazyLoadDisplayAssociationFieldsOfForm = () => {
   }
 
   const shouldNotLazyLoad = useMemo(() => {
-    return (
-      !isDisplayField(schemaName) || !variables || name === 'fields' || !collectionFieldRef.current || hasPreloadData
-    );
-  }, [schemaName, variables, name, collectionFieldRef.current, hasPreloadData]);
+    return !isDisplayField(schemaName) || !variables || name === 'fields' || !collectionFieldRef.current;
+  }, [schemaName, variables, name, collectionFieldRef.current]);
 
   const formValue = shouldNotLazyLoad
     ? {}
@@ -97,7 +93,7 @@ const useLazyLoadDisplayAssociationFieldsOfForm = () => {
 
     variables
       .parseVariable(variableString, formVariable, { appends })
-      .then((value) => {
+      .then(({ value }) => {
         nextTick(() => {
           const result = transformVariableValue(value, { targetCollectionField: collectionFieldRef.current });
           // fix https://nocobase.height.app/T-2608

@@ -7,14 +7,15 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
-import { IRecursionFieldProps, ISchemaFieldProps, RecursionField, Schema } from '@formily/react';
-import { useUpdate } from 'ahooks';
-import React, { useContext, useMemo } from 'react';
+import { IRecursionFieldProps, ISchemaFieldProps, Schema } from '@formily/react';
+import _ from 'lodash';
+import React, { createContext, memo, useContext, useMemo } from 'react';
+import { NocoBaseRecursionField } from '../../formily/NocoBaseRecursionField';
 import { SchemaComponentContext } from '../context';
 import { SchemaComponentOptions } from './SchemaComponentOptions';
 
 type SchemaComponentOnChange = {
-  onChange?: (s: Schema) => void;
+  onChange?: (s?: Schema) => void;
 };
 
 function toSchema(schema?: any) {
@@ -44,46 +45,73 @@ interface DistributedProps {
   distributed?: boolean;
 }
 
-const RecursionSchemaComponent = (props: ISchemaFieldProps & SchemaComponentOnChange & DistributedProps) => {
-  const { components, scope, schema, distributed, ...others } = props;
+/**
+ * Used to pass the onChange callback function.
+ *
+ * The onChange callback will be triggered whenever a descendant Schema changes.
+ */
+export const SchemaComponentOnChangeContext = createContext<SchemaComponentOnChange>({ onChange: _.noop });
+
+const RecursionSchemaComponent = memo((props: ISchemaFieldProps & SchemaComponentOnChange & DistributedProps) => {
+  const { components, scope, schema: _schema, distributed, onChange: _onChange, ...others } = props;
   const ctx = useContext(SchemaComponentContext);
-  const s = useMemo(() => toSchema(schema), [schema]);
-  const refresh = useUpdate();
+  const schema = useMemo(() => toSchema(_schema), [_schema]);
+  const value = useMemo(
+    () => ({
+      ...ctx,
+      distributed: ctx.distributed == false ? false : distributed,
+      /**
+       * @deprecated
+       */
+      refresh: ctx.refresh || _.noop,
+    }),
+    [ctx, distributed],
+  );
+
+  const { onChange: onChangeFromContext } = useContext(SchemaComponentOnChangeContext);
+
+  const onChangeValue = useMemo(
+    () => ({
+      onChange: () => {
+        _onChange?.(schema);
+        onChangeFromContext?.();
+      },
+    }),
+    [_onChange, onChangeFromContext, schema],
+  );
 
   return (
-    <SchemaComponentContext.Provider
-      value={{
-        ...ctx,
-        distributed: ctx.distributed == false ? false : distributed,
-        refresh: () => {
-          refresh();
-          if (ctx.distributed === false || distributed === false) {
-            ctx.refresh?.();
-          }
-          props.onChange?.(s);
-        },
-      }}
-    >
-      <SchemaComponentOptions inherit components={components} scope={scope}>
-        <RecursionField {...others} schema={s} />
-      </SchemaComponentOptions>
-    </SchemaComponentContext.Provider>
+    <SchemaComponentOnChangeContext.Provider value={onChangeValue}>
+      <SchemaComponentContext.Provider value={value}>
+        <SchemaComponentOptions inherit components={components} scope={scope}>
+          <NocoBaseRecursionField {...others} schema={schema} isUseFormilyField />
+        </SchemaComponentOptions>
+      </SchemaComponentContext.Provider>
+    </SchemaComponentOnChangeContext.Provider>
   );
-};
+});
 
-const MemoizedSchemaComponent = (props: ISchemaFieldProps & SchemaComponentOnChange & DistributedProps) => {
+RecursionSchemaComponent.displayName = 'RecursionSchemaComponent';
+
+const MemoizedSchemaComponent = memo((props: ISchemaFieldProps & SchemaComponentOnChange & DistributedProps) => {
   const { schema, ...others } = props;
   const s = useMemoizedSchema(schema);
   return <RecursionSchemaComponent {...others} schema={s} />;
-};
+});
 
-export const SchemaComponent = (
-  props: (ISchemaFieldProps | IRecursionFieldProps) & { memoized?: boolean } & SchemaComponentOnChange &
-    DistributedProps,
-) => {
-  const { memoized, ...others } = props;
-  if (memoized) {
-    return <MemoizedSchemaComponent {...others} />;
-  }
-  return <RecursionSchemaComponent {...others} />;
-};
+MemoizedSchemaComponent.displayName = 'MemoizedSchemaComponent';
+
+export const SchemaComponent = memo(
+  (
+    props: (ISchemaFieldProps | IRecursionFieldProps) & { memoized?: boolean } & SchemaComponentOnChange &
+      DistributedProps,
+  ) => {
+    const { memoized, ...others } = props;
+    if (memoized) {
+      return <MemoizedSchemaComponent {...others} />;
+    }
+    return <RecursionSchemaComponent {...others} />;
+  },
+);
+
+SchemaComponent.displayName = 'SchemaComponent';

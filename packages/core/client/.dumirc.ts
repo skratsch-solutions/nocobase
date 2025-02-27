@@ -1,4 +1,3 @@
-import _ from 'lodash'
 import { getUmiConfig } from '@nocobase/devtools/umiConfig';
 import { defineConfig } from 'dumi';
 import { defineThemeConfig } from 'dumi-theme-nocobase';
@@ -26,6 +25,9 @@ export default defineConfig({
     atomDirs: [
       { type: 'component', dir: 'src/schema-component/antd' },
     ],
+  },
+  jsMinifierOptions: {
+    target: ['chrome80', 'es2020'],
   },
   locales: lang === 'zh-CN' ? [{ id: 'zh-CN', name: '中文' },] : [{ id: 'en-US', name: 'English' }],
   themeConfig: defineThemeConfig({

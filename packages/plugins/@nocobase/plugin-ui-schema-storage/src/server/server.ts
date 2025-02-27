@@ -80,7 +80,11 @@ export class PluginUISchemaStorageServer extends Plugin {
       actions: uiSchemaActions,
     });
 
-    this.app.acl.allow('uiSchemas', ['getProperties', 'getJsonSchema', 'getParentJsonSchema'], 'loggedIn');
+    this.app.acl.allow(
+      'uiSchemas',
+      ['getProperties', 'getJsonSchema', 'getParentJsonSchema', 'initializeActionContext'],
+      'loggedIn',
+    );
     this.app.acl.allow('uiSchemaTemplates', ['get', 'list'], 'loggedIn');
   }
 
@@ -92,6 +96,33 @@ export class PluginUISchemaStorageServer extends Plugin {
         plugin: this,
       },
     });
+
+    const getSourceAndTargetForRemoveAction = async (ctx: any) => {
+      const { filterByTk } = ctx.action.params;
+      return {
+        targetCollection: 'uiSchemas',
+        targetRecordUK: filterByTk,
+      };
+    };
+
+    const getSourceAndTargetForInsertAdjacentAction = async (ctx: any) => {
+      return {
+        targetCollection: 'uiSchemas',
+        targetRecordUK: ctx.request.body?.schema?.['x-uid'],
+      };
+    };
+
+    const getSourceAndTargetForPatchAction = async (ctx: any) => {
+      return {
+        targetCollection: 'uiSchemas',
+        targetRecordUK: ctx.request.body?.['x-uid'],
+      };
+    };
+    this.app.auditManager.registerActions([
+      { name: 'uiSchemas:remove', getSourceAndTarget: getSourceAndTargetForRemoveAction },
+      { name: 'uiSchemas:insertAdjacent', getSourceAndTarget: getSourceAndTargetForInsertAdjacentAction },
+      { name: 'uiSchemas:patch', getSourceAndTarget: getSourceAndTargetForPatchAction },
+    ]);
 
     await this.importCollections(resolve(__dirname, 'collections'));
   }

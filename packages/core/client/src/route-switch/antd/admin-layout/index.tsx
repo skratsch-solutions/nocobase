@@ -8,24 +8,35 @@
  */
 
 import { css } from '@emotion/css';
-import { useSessionStorageState } from 'ahooks';
-import { App, ConfigProvider, Divider, Layout } from 'antd';
+import { ConfigProvider, Divider, Layout } from 'antd';
 import { createGlobalStyle } from 'antd-style';
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, Outlet, useLocation, useMatch, useNavigate, useParams } from 'react-router-dom';
+import React, {
+  createContext,
+  FC,
+  memo,
+  // @ts-ignore
+  startTransition,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { Outlet } from 'react-router-dom';
 import {
   ACLRolesCheckProvider,
   CurrentAppInfoProvider,
   CurrentUser,
+  findByUid,
+  findMenuItem,
   NavigateIfNotSignIn,
   PinnedPluginList,
   RemoteCollectionManagerProvider,
+  RemoteSchemaComponent,
   RemoteSchemaTemplateManagerPlugin,
   RemoteSchemaTemplateManagerProvider,
-  RouteSchemaComponent,
   SchemaComponent,
-  findByUid,
-  findMenuItem,
   useACLRoleContext,
   useAdminSchemaUid,
   useDocumentTitle,
@@ -33,11 +44,22 @@ import {
   useSystemSettings,
   useToken,
 } from '../../../';
+import {
+  CurrentPageUidProvider,
+  CurrentTabUidProvider,
+  IsSubPageClosedByPageMenuProvider,
+  useCurrentPageUid,
+  useIsInSettingsPage,
+  useMatchAdmin,
+  useMatchAdminName,
+  useNavigateNoUpdate,
+} from '../../../application/CustomRouterContextProvider';
 import { Plugin } from '../../../application/Plugin';
-import { useAppSpin } from '../../../application/hooks/useAppSpin';
 import { useMenuTranslation } from '../../../schema-component/antd/menu/locale';
 import { Help } from '../../../user/Help';
-import { VariablesProvider } from '../../../variables';
+import { KeepAlive } from './KeepAlive';
+
+export { KeepAlive };
 
 const filterByACL = (schema, options) => {
   const { allowAll, allowMenuItemIds = [] } = options;
@@ -64,42 +86,30 @@ const filterByACL = (schema, options) => {
   return schema;
 };
 
-const SchemaIdContext = createContext(null);
-SchemaIdContext.displayName = 'SchemaIdContext';
 const useMenuProps = () => {
-  const defaultSelectedUid = useContext(SchemaIdContext);
+  const currentPageUid = useCurrentPageUid();
   return {
-    selectedUid: defaultSelectedUid,
-    defaultSelectedUid,
+    selectedUid: currentPageUid,
+    defaultSelectedUid: currentPageUid,
   };
 };
 
-const MenuEditor = (props) => {
-  const { notification } = App.useApp();
-  const [hasNotice, setHasNotice] = useSessionStorageState('plugin-notice', { defaultValue: false });
+const MenuSchemaRequestContext = createContext(null);
+MenuSchemaRequestContext.displayName = 'MenuSchemaRequestContext';
+
+const MenuSchemaRequestProvider: FC = ({ children }) => {
   const { t } = useMenuTranslation();
   const { setTitle: _setTitle } = useDocumentTitle();
-  const setTitle = useCallback((title) => _setTitle(t(title)), []);
-  const navigate = useNavigate();
-  const params = useParams<any>();
-  const location = useLocation();
-  const isMatchAdmin = useMatch('/admin');
-  const isMatchAdminName = useMatch('/admin/:name');
-  const defaultSelectedUid = params.name;
-  const isDynamicPage = !!defaultSelectedUid;
-  const { sideMenuRef } = props;
+  const setTitle = useCallback((title) => _setTitle(t(title)), [_setTitle, t]);
+  const navigate = useNavigateNoUpdate();
+  const isMatchAdmin = useMatchAdmin();
+  const isMatchAdminName = useMatchAdminName();
+  const currentPageUid = useCurrentPageUid();
+  const isDynamicPage = !!currentPageUid;
   const ctx = useACLRoleContext();
-  const [current, setCurrent] = useState(null);
-
-  const onSelect = ({ item }) => {
-    const schema = item.props.schema;
-    setTitle(schema.title);
-    setCurrent(schema);
-    navigate(`/admin/${schema['x-uid']}`);
-  };
-  const { render } = useAppSpin();
   const adminSchemaUid = useAdminSchemaUid();
-  const { data, loading } = useRequest<{
+
+  const { data } = useRequest<{
     data: any;
   }>(
     {
@@ -114,7 +124,9 @@ const MenuEditor = (props) => {
           const s = findMenuItem(schema);
           if (s) {
             navigate(`/admin/${s['x-uid']}`);
-            setTitle(s.title);
+            startTransition(() => {
+              setTitle(s.title);
+            });
           } else {
             navigate(`/admin/`);
           }
@@ -125,14 +137,18 @@ const MenuEditor = (props) => {
         if (!isMatchAdminName || !isDynamicPage) return;
 
         // url 为 `admin/xxx` 的情况
-        const s = findByUid(schema, defaultSelectedUid);
+        const s = findByUid(schema, currentPageUid);
         if (s) {
-          setTitle(s.title);
+          startTransition(() => {
+            setTitle(s.title);
+          });
         } else {
           const s = findMenuItem(schema);
           if (s) {
             navigate(`/admin/${s['x-uid']}`);
-            setTitle(s.title);
+            startTransition(() => {
+              setTitle(s.title);
+            });
           } else {
             navigate(`/admin/`);
           }
@@ -141,88 +157,75 @@ const MenuEditor = (props) => {
     },
   );
 
+  return <MenuSchemaRequestContext.Provider value={data?.data}>{children}</MenuSchemaRequestContext.Provider>;
+};
+
+const MenuEditor = (props) => {
+  const { t } = useMenuTranslation();
+  const { setTitle: _setTitle } = useDocumentTitle();
+  const setTitle = useCallback((title) => _setTitle(t(title)), [_setTitle, t]);
+  const navigate = useNavigateNoUpdate();
+  const isInSettingsPage = useIsInSettingsPage();
+  const isMatchAdmin = useMatchAdmin();
+  const isMatchAdminName = useMatchAdminName();
+  const currentPageUid = useCurrentPageUid();
+  const { sideMenuRef } = props;
+  const ctx = useACLRoleContext();
+  const [current, setCurrent] = useState(null);
+  const menuSchema = useContext(MenuSchemaRequestContext);
+
+  const onSelect = useCallback(
+    ({ item }: { item; key; keyPath; domEvent }) => {
+      const schema = item.props.schema;
+      startTransition(() => {
+        setTitle(schema.title);
+        setCurrent(schema);
+      });
+      navigate(`/admin/${schema['x-uid']}`);
+    },
+    [navigate, setTitle],
+  );
+
   useEffect(() => {
-    const properties = Object.values(current?.root?.properties || {}).shift()?.['properties'] || data?.data?.properties;
+    const properties = Object.values(current?.root?.properties || {}).shift()?.['properties'] || menuSchema?.properties;
     if (sideMenuRef.current) {
       const pageType =
         properties &&
-        Object.values(properties).find((item) => item['x-uid'] === params.name && item['x-component'] === 'Menu.Item');
-      const isSettingPage = location?.pathname.includes('/settings');
-      if (pageType || isSettingPage) {
+        Object.values(properties).find(
+          (item) => item['x-uid'] === currentPageUid && item['x-component'] === 'Menu.Item',
+        );
+      if (pageType || isInSettingsPage) {
         sideMenuRef.current.style.display = 'none';
       } else {
         sideMenuRef.current.style.display = 'block';
       }
     }
-  }, [data?.data, params.name, sideMenuRef]);
+  }, [current?.root?.properties, currentPageUid, menuSchema?.properties, isInSettingsPage, sideMenuRef]);
 
   const schema = useMemo(() => {
-    const s = filterByACL(data?.data, ctx);
+    const s = filterByACL(menuSchema, ctx);
     if (s?.['x-component-props']) {
       s['x-component-props']['useProps'] = useMenuProps;
     }
     return s;
-  }, [data?.data]);
+  }, [menuSchema]);
 
   useEffect(() => {
     if (isMatchAdminName) {
-      const s = findByUid(schema, defaultSelectedUid);
+      const s = findByUid(schema, currentPageUid);
       if (s) {
-        setTitle(s.title);
+        startTransition(() => {
+          setTitle(s.title);
+        });
       }
     }
-  }, [defaultSelectedUid, isMatchAdmin, isMatchAdminName, schema, setTitle]);
+  }, [currentPageUid, isMatchAdmin, isMatchAdminName, schema, setTitle]);
 
-  useRequest(
-    {
-      url: 'applicationPlugins:list',
-      params: {
-        sort: 'id',
-        paginate: false,
-      },
-    },
-    {
-      onSuccess: ({ data }) => {
-        setHasNotice(true);
-        const errorPlugins = data.filter((item) => !item.isCompatible);
-        if (errorPlugins.length) {
-          notification.error({
-            message: 'Plugin dependencies check failed',
-            description: (
-              <div>
-                <div>
-                  These plugins failed dependency checks. Please go to the{' '}
-                  <Link to="/admin/pm/list/local/">plugin management page</Link> for more details.{' '}
-                </div>
-                <ul>
-                  {errorPlugins.map((item) => (
-                    <li key={item.id}>
-                      {item.displayName} - {item.packageName}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ),
-          });
-        }
-      },
-      manual: true,
-      // ready: !hasNotice,
-    },
-  );
+  const scope = useMemo(() => {
+    return { useMenuProps, onSelect, sideMenuRef };
+  }, [onSelect, sideMenuRef]);
 
-  if (loading) {
-    return render();
-  }
-  return (
-    <SchemaIdContext.Provider value={defaultSelectedUid}>
-      <SchemaComponent
-        distributed
-        scope={{ useMenuProps, onSelect, sideMenuRef, defaultSelectedUid }}
-        schema={schema}
-      />
-    </SchemaIdContext.Provider>
-  );
+  return <SchemaComponent distributed scope={scope} schema={schema} />;
 };
 
 /**
@@ -283,47 +286,162 @@ const SetThemeOfHeaderSubmenu = ({ children }) => {
     };
   }, []);
 
-  return (
-    <>
-      <GlobalStyleForAdminLayout />
-      <ConfigProvider getPopupContainer={() => containerRef.current}>{children}</ConfigProvider>
-    </>
-  );
+  const getPopupContainer = useCallback(() => containerRef.current, []);
+
+  return <ConfigProvider getPopupContainer={getPopupContainer}>{children}</ConfigProvider>;
 };
 
+const sideClass = css`
+  height: 100%;
+  /* position: fixed; */
+  position: relative;
+  left: 0;
+  top: 0;
+  background: rgba(0, 0, 0, 0);
+  z-index: 100;
+  .ant-layout-sider-children {
+    top: var(--nb-header-height);
+    position: fixed;
+    width: 200px;
+    height: calc(100vh - var(--nb-header-height));
+  }
+`;
+
+const InternalAdminSideBar: FC<{ pageUid: string; sideMenuRef: any }> = memo((props) => {
+  if (!props.pageUid) return null;
+  return <Layout.Sider className={sideClass} theme={'light'} ref={props.sideMenuRef}></Layout.Sider>;
+});
+InternalAdminSideBar.displayName = 'InternalAdminSideBar';
+
 const AdminSideBar = ({ sideMenuRef }) => {
-  const params = useParams<any>();
-  if (!params.name) return null;
-  return (
-    <Layout.Sider
-      className={css`
-        height: 100%;
-        /* position: fixed; */
-        position: relative;
-        left: 0;
-        top: 0;
-        background: rgba(0, 0, 0, 0);
-        z-index: 100;
-        .ant-layout-sider-children {
-          top: var(--nb-header-height);
-          position: fixed;
-          width: 200px;
-          height: calc(100vh - var(--nb-header-height));
-        }
-      `}
-      theme={'light'}
-      ref={sideMenuRef}
-    ></Layout.Sider>
-  );
+  const currentPageUid = useCurrentPageUid();
+  return <InternalAdminSideBar pageUid={currentPageUid} sideMenuRef={sideMenuRef} />;
 };
 
 export const AdminDynamicPage = () => {
-  const params = useParams<{ name?: string }>();
-  return <RouteSchemaComponent schema={params.name} />;
+  const currentPageUid = useCurrentPageUid();
+
+  return (
+    <KeepAlive uid={currentPageUid}>{(uid) => <RemoteSchemaComponent onlyRenderProperties uid={uid} />}</KeepAlive>
+  );
+};
+
+const layoutContentClass = css`
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  height: 100vh;
+  > div {
+    position: relative;
+  }
+  .ant-layout-footer {
+    position: absolute;
+    bottom: 0;
+    text-align: center;
+    width: 100%;
+    z-index: 0;
+    padding: 0px 50px;
+  }
+`;
+
+const layoutContentHeaderClass = css`
+  flex-shrink: 0;
+  height: var(--nb-header-height);
+  line-height: var(--nb-header-height);
+  background: transparent;
+  pointer-events: none;
+`;
+
+const style1: any = {
+  position: 'relative',
+  width: '100%',
+  height: '100%',
+  display: 'flex',
+};
+
+const style2: any = {
+  position: 'relative',
+  zIndex: 1,
+  flex: '1 1 auto',
+  display: 'flex',
+  height: '100%',
+};
+
+const className1 = css`
+  width: 200px;
+  display: inline-flex;
+  flex-shrink: 0;
+  color: #fff;
+  padding: 0;
+  align-items: center;
+`;
+const className2 = css`
+  padding: 0 16px;
+  object-fit: contain;
+  width: 100%;
+  height: 100%;
+`;
+const className3 = css`
+  padding: 0 16px;
+  width: 100%;
+  height: 100%;
+  font-weight: 500;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`;
+const className4 = css`
+  flex: 1 1 auto;
+  width: 0;
+`;
+const className5 = css`
+  position: relative;
+  flex-shrink: 0;
+  height: 100%;
+  z-index: 10;
+`;
+const theme = {
+  token: {
+    colorSplit: 'rgba(255, 255, 255, 0.1)',
+  },
+};
+
+const pageContentStyle: React.CSSProperties = {
+  flex: 1,
+  overflowY: 'auto',
+};
+
+export const LayoutContent = () => {
+  /* Use the "nb-subpages-slot-without-header-and-side" class name to locate the position of the subpages */
+  return (
+    <Layout.Content className={`${layoutContentClass} nb-subpages-slot-without-header-and-side`}>
+      <header className={layoutContentHeaderClass}></header>
+      <div style={pageContentStyle}>
+        <Outlet />
+      </div>
+      {/* {service.contentLoading ? render() : <Outlet />} */}
+    </Layout.Content>
+  );
+};
+
+const NocoBaseLogo = () => {
+  const result = useSystemSettings();
+  const { token } = useToken();
+  const fontSizeStyle = useMemo(() => ({ fontSize: token.fontSizeHeading3 }), [token.fontSizeHeading3]);
+
+  const logo = result?.data?.data?.logo?.url ? (
+    <img className={className2} src={result?.data?.data?.logo?.url} />
+  ) : (
+    <span style={fontSizeStyle} className={className3}>
+      {result?.data?.data?.title}
+    </span>
+  );
+
+  return <div className={className1}>{result?.loading ? null : logo}</div>;
 };
 
 export const InternalAdminLayout = () => {
-  const result = useSystemSettings();
   const { token } = useToken();
   const sideMenuRef = useRef<HTMLDivElement>();
 
@@ -374,70 +492,18 @@ export const InternalAdminLayout = () => {
     <Layout>
       <GlobalStyleForAdminLayout />
       <Layout.Header className={layoutHeaderCss}>
-        <div
-          style={{
-            position: 'relative',
-            width: '100%',
-            height: '100%',
-            display: 'flex',
-          }}
-        >
-          <div
-            style={{
-              position: 'relative',
-              zIndex: 1,
-              flex: '1 1 auto',
-              display: 'flex',
-              height: '100%',
-            }}
-          >
-            <div
-              className={css`
-                width: 200px;
-                display: inline-flex;
-                flex-shrink: 0;
-                color: #fff;
-                padding: 0;
-                align-items: center;
-              `}
-            >
-              <img
-                className={css`
-                  padding: 0 16px;
-                  object-fit: contain;
-                  width: 100%;
-                  height: 100%;
-                `}
-                src={result?.data?.data?.logo?.url}
-              />
-            </div>
-            <div
-              className={css`
-                flex: 1 1 auto;
-                width: 0;
-              `}
-            >
+        <div style={style1}>
+          <div style={style2}>
+            <NocoBaseLogo />
+            <div className={className4}>
               <SetThemeOfHeaderSubmenu>
                 <MenuEditor sideMenuRef={sideMenuRef} />
               </SetThemeOfHeaderSubmenu>
             </div>
           </div>
-          <div
-            className={css`
-              position: relative;
-              flex-shrink: 0;
-              height: 100%;
-              z-index: 10;
-            `}
-          >
+          <div className={className5}>
             <PinnedPluginList />
-            <ConfigProvider
-              theme={{
-                token: {
-                  colorSplit: 'rgba(255, 255, 255, 0.1)',
-                },
-              }}
-            >
+            <ConfigProvider theme={theme}>
               <Divider type="vertical" />
             </ConfigProvider>
             <Help />
@@ -446,56 +512,30 @@ export const InternalAdminLayout = () => {
         </div>
       </Layout.Header>
       <AdminSideBar sideMenuRef={sideMenuRef} />
-      <Layout.Content
-        className={css`
-          display: flex;
-          flex-direction: column;
-          position: relative;
-          overflow-y: auto;
-          height: 100vh;
-          max-height: 100vh;
-          > div {
-            position: relative;
-          }
-          .ant-layout-footer {
-            position: absolute;
-            bottom: 0;
-            text-align: center;
-            width: 100%;
-            z-index: 0;
-            padding: 0px 50px;
-          }
-        `}
-      >
-        <header
-          className={css`
-            flex-shrink: 0;
-            height: var(--nb-header-height);
-            line-height: var(--nb-header-height);
-            background: transparent;
-            pointer-events: none;
-          `}
-        ></header>
-        <Outlet />
-        {/* {service.contentLoading ? render() : <Outlet />} */}
-      </Layout.Content>
+      <LayoutContent />
     </Layout>
   );
 };
 
 export const AdminProvider = (props) => {
   return (
-    <CurrentAppInfoProvider>
-      <NavigateIfNotSignIn>
-        <RemoteSchemaTemplateManagerProvider>
-          <RemoteCollectionManagerProvider>
-            <VariablesProvider>
-              <ACLRolesCheckProvider>{props.children}</ACLRolesCheckProvider>
-            </VariablesProvider>
-          </RemoteCollectionManagerProvider>
-        </RemoteSchemaTemplateManagerProvider>
-      </NavigateIfNotSignIn>
-    </CurrentAppInfoProvider>
+    <CurrentPageUidProvider>
+      <CurrentTabUidProvider>
+        <IsSubPageClosedByPageMenuProvider>
+          <NavigateIfNotSignIn>
+            <ACLRolesCheckProvider>
+              <MenuSchemaRequestProvider>
+                <RemoteCollectionManagerProvider>
+                  <CurrentAppInfoProvider>
+                    <RemoteSchemaTemplateManagerProvider>{props.children}</RemoteSchemaTemplateManagerProvider>
+                  </CurrentAppInfoProvider>
+                </RemoteCollectionManagerProvider>
+              </MenuSchemaRequestProvider>
+            </ACLRolesCheckProvider>
+          </NavigateIfNotSignIn>
+        </IsSubPageClosedByPageMenuProvider>
+      </CurrentTabUidProvider>
+    </CurrentPageUidProvider>
   );
 };
 

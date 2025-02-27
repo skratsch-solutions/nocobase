@@ -67,25 +67,26 @@ export async function submit(context: Context, next) {
     return context.throw(403);
   }
   const presetValues = processor.getParsedValue(actionItem.values ?? {}, userJob.nodeId, {
-    // @deprecated
-    currentUser: currentUser,
-    // @deprecated
-    currentRecord: values.result[formKey],
-    // @deprecated
-    currentTime: new Date(),
-    $user: currentUser,
-    $nForm: values.result[formKey],
-    $nDate: {
-      now: new Date(),
+    additionalScope: {
+      // @deprecated
+      currentUser: currentUser,
+      // @deprecated
+      currentRecord: values.result[formKey],
+      // @deprecated
+      currentTime: new Date(),
+      $user: currentUser,
+      $nForm: values.result[formKey],
+      $nDate: {
+        now: new Date(),
+      },
     },
   });
 
   userJob.set({
     status: actionItem.status,
-    result:
-      actionItem.status > JOB_STATUS.PENDING
-        ? { [formKey]: Object.assign(values.result[formKey], presetValues), _: actionKey }
-        : Object.assign(userJob.result ?? {}, values.result),
+    result: actionItem.status
+      ? { [formKey]: Object.assign(values.result[formKey], presetValues), _: actionKey }
+      : Object.assign(userJob.result ?? {}, values.result),
   });
 
   const handler = instruction.formTypes.get(forms[formKey].type);

@@ -13,8 +13,8 @@ import { error } from '@nocobase/utils/client';
 import { App, Dropdown, Menu, MenuProps } from 'antd';
 import React, { createContext, useCallback, useMemo as useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 import { useACLRoleContext, useAPIClient, useCurrentUserContext, useToken } from '..';
+import { useNavigateNoUpdate } from '../application/CustomRouterContextProvider';
 import { useChangePassword } from './ChangePassword';
 import { useCurrentUserSettingsMenu } from './CurrentUserSettingsMenuProvider';
 import { useEditProfile } from './EditProfile';
@@ -48,7 +48,7 @@ export const SettingsMenu: React.FC<{
   const { redirectUrl = '' } = props;
   const { allowAll, snippets } = useACLRoleContext();
   const appAllowed = allowAll || snippets?.includes('app');
-  const navigate = useNavigate();
+  const navigate = useNavigateNoUpdate();
   const api = useAPIClient();
   const { t } = useTranslation();
   const silenceApi = useAPIClient();
@@ -125,7 +125,7 @@ export const SettingsMenu: React.FC<{
       },
       editProfile,
       changePassword,
-      {
+      (editProfile || changePassword) && {
         key: 'divider_2',
         type: 'divider',
       },
@@ -139,8 +139,12 @@ export const SettingsMenu: React.FC<{
         key: 'signout',
         label: t('Sign out'),
         onClick: async () => {
-          await api.auth.signOut();
-          navigate(`/signin?redirect=${encodeURIComponent(redirectUrl)}`);
+          const { data } = await api.auth.signOut();
+          if (data?.data?.redirect) {
+            window.location.href = data.data.redirect;
+          } else {
+            navigate(`/signin?redirect=${encodeURIComponent(redirectUrl)}`);
+          }
         },
       },
     ];

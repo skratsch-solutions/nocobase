@@ -12,7 +12,7 @@ import { css } from '@emotion/css';
 import { SchemaOptionsContext } from '@formily/react';
 import { uid } from '@formily/shared';
 import {
-  CollectionCategroriesContext,
+  CollectionCategoriesContext,
   CollectionProvider_deprecated,
   SchemaComponent,
   SchemaComponentProvider,
@@ -35,7 +35,7 @@ import {
   useValuesFromRecord,
 } from '../action-hooks';
 import useStyles from '../style';
-import { getPopupContainer, useGCMTranslation, collection } from '../utils';
+import { collection, getPopupContainer, useGCMTranslation } from '../utils';
 import { AddFieldAction } from './AddFieldAction';
 import { CollectionNodeProvder } from './CollectionNodeProvder';
 import { ConnectAssociationAction } from './ConnectAssociationAction';
@@ -59,7 +59,9 @@ const OperationButton: any = React.memo((props: any) => {
     !(property.through ? targetGraph.hasCell(property.through) : targetGraph.hasCell(property.target));
   const {
     data: { database },
-  } = useCurrentAppInfo();
+  } = useCurrentAppInfo() || {
+    data: { database: {} as any },
+  };
   const useNewId = (prefix) => {
     return `${prefix || ''}${uid()}`;
   };
@@ -307,7 +309,7 @@ const PortsCom = React.memo<any>(({ targetGraph, collectionData, setTargetNode, 
     if (
       v.isForeignKey ||
       v.primaryKey ||
-      ['obo', 'oho', 'o2o', 'o2m', 'm2o', 'm2m', 'linkTo', 'id'].includes(v.interface)
+      ['obo', 'oho', 'o2o', 'o2m', 'm2o', 'm2m', 'linkTo', 'id', 'mbm'].includes(v.interface)
     ) {
       return 'initPorts';
     } else {
@@ -385,9 +387,11 @@ const Entity: React.FC<{
   } = node;
   const {
     data: { database },
-  } = useCurrentAppInfo();
+  } = useCurrentAppInfo() || {
+    data: { database: {} as any },
+  };
   const collectionData = useRef();
-  const categoryData = useContext(CollectionCategroriesContext);
+  const categoryData = useContext(CollectionCategoriesContext);
   collectionData.current = { ...item, title, inherits: item.inherits && new Proxy(item.inherits, {}) };
   const { category = [] } = item;
   const compile = useCompile();
@@ -420,7 +424,7 @@ const Entity: React.FC<{
           <Badge.Ribbon
             key={index}
             color={v.color}
-            style={{ width: '103%', height: '3px', marginTop: index * 5 - 8, borderRadius: 0 }}
+            style={{ width: '103%', height: '3px', marginTop: index * 5 - 4, borderRadius: 0 }}
             placement="start"
           />
         );

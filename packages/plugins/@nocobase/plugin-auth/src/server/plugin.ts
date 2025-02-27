@@ -10,7 +10,6 @@
 import { Cache } from '@nocobase/cache';
 import { Model } from '@nocobase/database';
 import { InstallOptions, Plugin } from '@nocobase/server';
-import { resolve } from 'path';
 import { namespace, presetAuthType, presetAuthenticator } from '../preset';
 import authActions from './actions/auth';
 import authenticatorsActions from './actions/authenticators';
@@ -29,15 +28,6 @@ export class PluginAuthServer extends Plugin {
   }
 
   async load() {
-    // Set up database
-    await this.importCollections(resolve(__dirname, 'collections'));
-    this.db.addMigrations({
-      namespace: 'auth',
-      directory: resolve(__dirname, 'migrations'),
-      context: {
-        plugin: this,
-      },
-    });
     this.cache = await this.app.cacheManager.createCache({
       name: 'auth',
       prefix: 'auth',
@@ -59,13 +49,46 @@ export class PluginAuthServer extends Plugin {
     this.app.authManager.registerTypes(presetAuthType, {
       auth: BasicAuth,
       title: tval('Password', { ns: namespace }),
+      getPublicOptions: (options) => {
+        const usersCollection = this.db.getCollection('users');
+        let signupForm = options?.public?.signupForm || [];
+        signupForm = signupForm.filter((item: { show: boolean }) => item.show);
+        if (
+          !(
+            signupForm.length &&
+            signupForm.some(
+              (item: { field: string; show: boolean; required: boolean }) =>
+                ['username', 'email'].includes(item.field) && item.show && item.required,
+            )
+          )
+        ) {
+          // At least one of the username or email fields is required
+          signupForm.unshift({ field: 'username', show: true, required: true });
+        }
+        signupForm = signupForm
+          .filter((field: { show: boolean }) => field.show)
+          .map((item: { field: string; required: boolean }) => {
+            const field = usersCollection.getField(item.field);
+            return {
+              ...item,
+              uiSchema: {
+                ...field.options?.uiSchema,
+                required: item.required,
+              },
+            };
+          });
+        return {
+          ...options?.public,
+          signupForm,
+        };
+      },
     });
     // Register actions
     Object.entries(authActions).forEach(
-      ([action, handler]) => this.app.resourcer.getResource('auth')?.addAction(action, handler),
+      ([action, handler]) => this.app.resourceManager.getResource('auth')?.addAction(action, handler),
     );
     Object.entries(authenticatorsActions).forEach(([action, handler]) =>
-      this.app.resourcer.registerAction(`authenticators:${action}`, handler),
+      this.app.resourceManager.registerActionHandler(`authenticators:${action}`, handler),
     );
     // Set up ACL
     ['check', 'signIn', 'signUp'].forEach((action) => this.app.acl.allow('auth', action));
@@ -85,6 +108,139 @@ export class PluginAuthServer extends Plugin {
       const cache = this.app.cache as Cache;
       await cache.del(`auth:${user.id}`);
     });
+    this.app.on('cache:del:auth', async ({ userId }) => {
+      await this.cache.del(`auth:${userId}`);
+    });
+
+    this.app.on('ws:message:auth:token', async ({ clientId, payload }) => {
+      if (!payload || !payload.token || !payload.authenticator) {
+        this.app.emit(`ws:removeTag`, {
+          clientId,
+          tagKey: 'userId',
+        });
+        return;
+      }
+
+      const auth = await this.app.authManager.get(payload.authenticator, {
+        getBearerToken: () => payload.token,
+        app: this.app,
+        db: this.app.db,
+        cache: this.app.cache,
+        logger: this.app.logger,
+        log: this.app.log,
+      } as any);
+
+      const user = await auth.check();
+
+      if (!user) {
+        this.app.logger.error(`Invalid token: ${payload.token}`);
+        this.app.emit(`ws:removeTag`, {
+          clientId,
+          tagKey: 'userId',
+        });
+        return;
+      }
+
+      this.app.emit(`ws:setTag`, {
+        clientId,
+        tagKey: 'userId',
+        tagValue: user.id,
+      });
+
+      this.app.emit(`ws:authorized`, {
+        clientId,
+        userId: user.id,
+      });
+    });
+
+    this.app.auditManager.registerActions([
+      {
+        name: 'auth:signIn',
+        getMetaData: async (ctx: any) => {
+          let body = {};
+          if (ctx.status === 200) {
+            body = {
+              data: {
+                ...ctx.body.data,
+                token: undefined,
+              },
+            };
+          } else {
+            body = ctx.body;
+          }
+          return {
+            request: {
+              body: {
+                ...ctx.request?.body,
+                password: undefined,
+              },
+            },
+          };
+        },
+        getUserInfo: async (ctx: any) => {
+          if (!ctx.body?.data?.user) {
+            return null;
+          }
+          // 查询用户角色
+          const userId = ctx.body.data.user.id;
+          const user = await ctx.db.getRepository('users').findOne({
+            filterByTk: userId,
+          });
+          const roles = await user?.getRoles();
+          if (!roles) {
+            return {
+              userId,
+            };
+          } else {
+            if (roles.length === 1) {
+              return {
+                userId,
+                roleName: roles[0].name,
+              };
+            } else {
+              // 多角色的情况下暂时不返回角色名
+              return {
+                userId,
+              };
+            }
+          }
+        },
+      },
+      {
+        name: 'auth:signUp',
+        getMetaData: async (ctx: any) => {
+          return {
+            request: {
+              body: {
+                ...ctx.request?.body,
+                password: undefined,
+                confirm_password: undefined,
+              },
+            },
+          };
+        },
+      },
+      {
+        name: 'auth:changePassword',
+        getMetaData: async (ctx: any) => {
+          return {
+            request: {
+              body: {},
+            },
+            response: {
+              body: {},
+            },
+          };
+        },
+        getSourceAndTarget: async (ctx: any) => {
+          return {
+            targetCollection: 'users',
+            targetRecordUK: ctx.auth.user.id,
+          };
+        },
+      },
+      'auth:signOut',
+    ]);
   }
 
   async install(options?: InstallOptions) {

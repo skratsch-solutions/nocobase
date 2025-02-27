@@ -9,7 +9,7 @@
 
 import React, { useState } from 'react';
 import { Button, Tooltip } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { ApartmentOutlined, PlusOutlined } from '@ant-design/icons';
 
 import { css } from '@nocobase/client';
 
@@ -30,6 +30,7 @@ export default class extends Instruction {
   type = 'parallel';
   group = 'control';
   description = `{{t("Run multiple branch processes in parallel.", { ns: "${NAMESPACE}" })}}`;
+  icon = (<ApartmentOutlined style={{}} />);
   fieldset = {
     mode: {
       type: 'string',
@@ -58,6 +59,7 @@ export default class extends Instruction {
       default: 'all',
     },
   };
+  branching = true;
   components = {
     RadioWithTooltip,
   };
@@ -107,6 +109,8 @@ export default class extends Instruction {
                         padding-top: 2em;
 
                         > button {
+                          line-height: 1;
+
                           .anticon {
                             transform: rotate(45deg);
                           }
@@ -118,6 +122,7 @@ export default class extends Instruction {
                         icon={<PlusOutlined />}
                         onClick={() => setBranchCount(branchCount - 1)}
                         disabled={workflow.executed}
+                        size="small"
                       />
                     </div>
                   ) : null
@@ -137,6 +142,7 @@ export default class extends Instruction {
               className={css`
                 position: relative;
                 top: 1em;
+                line-height: 1;
                 transform-origin: center;
                 transform: rotate(45deg);
 
@@ -145,6 +151,7 @@ export default class extends Instruction {
                   transform: rotate(-45deg);
                 }
               `}
+              size="small"
               onClick={() => setBranchCount(branchCount + 1)}
               disabled={workflow.executed}
             />

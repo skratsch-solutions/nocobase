@@ -7,12 +7,7 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
-import {
-  BlockSchemaComponentPlugin,
-  FixedBlock,
-  TableBlockProvider,
-  useTableBlockDecoratorProps,
-} from '@nocobase/client';
+import { BlockSchemaComponentPlugin, TableBlockProvider, useTableBlockDecoratorProps } from '@nocobase/client';
 import {
   CheckSettingsOptions,
   checkSchema,
@@ -178,7 +173,7 @@ describe('Table.settings', () => {
           modalChecker: {
             modalTitle: 'Data loading mode',
             async beforeCheck() {
-              await userEvent.click(screen.getByText('Load data after filtering'));
+              await userEvent.click(screen.getByText('Do not load data when filter is empty'));
             },
             async afterSubmit() {
               await checkSchema({
@@ -216,6 +211,21 @@ describe('Table.settings', () => {
             },
             {
               label: '100',
+            },
+          ],
+        },
+        {
+          title: 'Table size',
+          type: 'select',
+          options: [
+            {
+              label: 'Large',
+            },
+            {
+              label: 'Middle',
+            },
+            {
+              label: 'Small',
             },
           ],
         },
@@ -274,7 +284,6 @@ describe('Table.settings', () => {
       appOptions: {
         components: {
           TableBlockProviderWithSchema,
-          FixedBlock,
         },
         plugins: [BlockSchemaComponentPlugin],
         scopes: {

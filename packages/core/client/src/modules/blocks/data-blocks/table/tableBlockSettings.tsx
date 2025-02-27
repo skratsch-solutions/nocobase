@@ -11,6 +11,7 @@ import { useField, useFieldSchema } from '@formily/react';
 import { useTranslation } from 'react-i18next';
 import { useAPIClient } from '../../../../api-client';
 import { SchemaSettings } from '../../../../application/schema-settings/SchemaSettings';
+import { createSwitchSettingsItem } from '../../../../application/schema-settings/utils/createSwitchSettingsItem';
 import { useTableBlockContext } from '../../../../block-provider';
 import { useCollectionManager_deprecated, useCollection_deprecated } from '../../../../collection-manager';
 import { FilterBlockType } from '../../../../filter-provider/utils';
@@ -20,10 +21,10 @@ import { SchemaSettingsBlockTitleItem } from '../../../../schema-settings/Schema
 import { SchemaSettingsConnectDataBlocks } from '../../../../schema-settings/SchemaSettingsConnectDataBlocks';
 import { SchemaSettingsSortField } from '../../../../schema-settings/SchemaSettingsSortField';
 import { SchemaSettingsTemplate } from '../../../../schema-settings/SchemaSettingsTemplate';
-import { setDataLoadingModeSettingsItem } from '../details-multi/setDataLoadingModeSettingsItem';
 import { setDefaultSortingRulesSchemaSettingsItem } from '../../../../schema-settings/setDefaultSortingRulesSchemaSettingsItem';
 import { setTheDataScopeSchemaSettingsItem } from '../../../../schema-settings/setTheDataScopeSchemaSettingsItem';
-import { createSwitchSettingsItem } from '../../../../application/schema-settings/utils';
+import { useBlockTemplateContext } from '../../../../schema-templates/BlockTemplateProvider';
+import { setDataLoadingModeSettingsItem } from '../details-multi/setDataLoadingModeSettingsItem';
 
 export const tableBlockSettings = new SchemaSettings({
   name: 'blockSettings:table',
@@ -163,6 +164,7 @@ export const tableBlockSettings = new SchemaSettings({
           title: t('Records per page'),
           value: field.decoratorProps?.params?.pageSize || 20,
           options: [
+            { label: '5', value: 5 },
             { label: '10', value: 10 },
             { label: '20', value: 20 },
             { label: '50', value: 50 },
@@ -186,6 +188,40 @@ export const tableBlockSettings = new SchemaSettings({
       },
     },
     {
+      name: 'tableSize',
+      type: 'select',
+      useComponentProps() {
+        const field = useField();
+        const fieldSchema = useFieldSchema();
+        const { t } = useTranslation();
+        const { dn } = useDesignable();
+        const schema = fieldSchema.reduceProperties((_, s) => {
+          if (s['x-component'] === 'TableV2') {
+            return s;
+          }
+        }, null);
+        return {
+          title: t('Table size'),
+          value: schema?.['x-component-props']?.size || 'small',
+          options: [
+            { label: t('Large'), value: 'large' },
+            { label: t('Middle'), value: 'middle' },
+            { label: t('Small'), value: 'small' },
+          ],
+          onChange: (size) => {
+            schema['x-component-props'] = schema['x-component-props'] || {};
+            schema['x-component-props']['size'] = size;
+            dn.emit('patch', {
+              schema: {
+                ['x-uid']: schema['x-uid'],
+                'x-component-props': schema['x-component-props'],
+              },
+            });
+          },
+        };
+      },
+    },
+    {
       name: 'ConnectDataBlocks',
       Component: SchemaSettingsConnectDataBlocks,
       useComponentProps() {
@@ -199,6 +235,7 @@ export const tableBlockSettings = new SchemaSettings({
     {
       name: 'divider',
       type: 'divider',
+      sort: 7000,
       useVisible: () => {
         const fieldSchema = useFieldSchema();
         const supportTemplate = !fieldSchema?.['x-decorator-props']?.disableTemplate;
@@ -207,14 +244,16 @@ export const tableBlockSettings = new SchemaSettings({
     },
     {
       name: 'ConvertReferenceToDuplicate',
+      sort: 8000,
       Component: SchemaSettingsTemplate,
       useComponentProps() {
         const { name } = useCollection_deprecated();
         const fieldSchema = useFieldSchema();
+        const { componentNamePrefix } = useBlockTemplateContext();
         const defaultResource =
           fieldSchema?.['x-decorator-props']?.resource || fieldSchema?.['x-decorator-props']?.association;
         return {
-          componentName: 'Table',
+          componentName: `${componentNamePrefix}Table`,
           collectionName: name,
           resourceName: defaultResource,
         };
@@ -228,10 +267,12 @@ export const tableBlockSettings = new SchemaSettings({
     {
       name: 'divider2',
       type: 'divider',
+      sort: 9000,
     },
     {
       name: 'delete',
       type: 'remove',
+      sort: 10000,
       useComponentProps: () => {
         return {
           removeParentsIfNoChildren: true,

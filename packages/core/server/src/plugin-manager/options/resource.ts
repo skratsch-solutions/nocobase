@@ -9,11 +9,10 @@
 
 import { uid } from '@nocobase/utils';
 import fs from 'fs';
+import fse from 'fs-extra';
 import path from 'path';
 import Application from '../../application';
-import { getExposeUrl } from '../clientStaticUtils';
 import PluginManager from '../plugin-manager';
-//@ts-ignore
 
 export default {
   name: 'pm',
@@ -97,7 +96,8 @@ export default {
       if (!filterByTk) {
         ctx.throw(400, 'plugin name invalid');
       }
-      app.runAsCLI(['pm', 'enable', filterByTk], { from: 'user' });
+      const keys = Array.isArray(filterByTk) ? filterByTk : [filterByTk];
+      app.runAsCLI(['pm', 'enable', ...keys], { from: 'user' });
       ctx.body = filterByTk;
       await next();
     },
@@ -124,7 +124,9 @@ export default {
     async list(ctx, next) {
       const locale = ctx.getCurrentLocale();
       const pm = ctx.app.pm as PluginManager;
-      ctx.body = await pm.list({ locale, isPreset: false });
+      // ctx.body = await pm.list({ locale, isPreset: false });
+      const plugin = pm.get('nocobase') as any;
+      ctx.body = await plugin.getAllPlugins(locale);
       await next();
     },
     async listEnabled(ctx, next) {
@@ -135,21 +137,19 @@ export default {
           enabled: true,
         },
       });
-      ctx.body = items
-        .map((item) => {
-          try {
-            return {
-              ...item.toJSON(),
-              url: `${process.env.APP_SERVER_BASE_URL}${getExposeUrl(
-                item.packageName,
-                PLUGIN_CLIENT_ENTRY_FILE,
-              )}?version=${item.version}`,
-            };
-          } catch {
-            return false;
-          }
-        })
-        .filter(Boolean);
+      const arr = [];
+      for (const item of items) {
+        const pkgPath = path.resolve(process.env.NODE_MODULES_PATH, item.packageName);
+        const r = await fse.exists(pkgPath);
+        if (r) {
+          const url = `${process.env.APP_SERVER_BASE_URL}${process.env.PLUGIN_STATICS_PATH}${item.packageName}/${PLUGIN_CLIENT_ENTRY_FILE}?version=${item.version}`;
+          arr.push({
+            ...item.toJSON(),
+            url,
+          });
+        }
+      }
+      ctx.body = arr;
       await next();
     },
     async get(ctx, next) {
@@ -159,7 +159,9 @@ export default {
       if (!filterByTk) {
         ctx.throw(400, 'plugin name invalid');
       }
-      ctx.body = await pm.get(filterByTk).toJSON({ locale });
+      const plugin = pm.get('nocobase') as any;
+      ctx.body = await plugin.getPluginInfo(filterByTk, locale);
+      // ctx.body = await pm.get(filterByTk).toJSON({ locale });
       await next();
     },
   },

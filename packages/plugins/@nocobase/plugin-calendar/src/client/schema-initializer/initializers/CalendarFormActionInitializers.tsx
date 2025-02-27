@@ -7,20 +7,29 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
-import { SchemaInitializer, SchemaInitializerItemType, useCollection_deprecated } from '@nocobase/client';
+import { useFieldSchema } from '@formily/react';
+import {
+  SchemaInitializer,
+  SchemaInitializerItemType,
+  useCollection_deprecated,
+  useActionAvailable,
+} from '@nocobase/client';
+import { useContext } from 'react';
 import { generateNTemplate } from '../../../locale';
-
+import { DeleteEventActionInitializer } from '../items/DeleteEventActionInitializer';
+import { DeleteEventContext } from '../../calendar/Calendar';
 export const deleteEventActionInitializer: SchemaInitializerItemType<any> = {
   name: 'deleteEvent',
   title: generateNTemplate('Delete Event'),
-  Component: 'DeleteEventActionInitializer',
+  Component: DeleteEventActionInitializer,
   schema: {
     'x-component': 'Action',
     'x-decorator': 'ACLActionProvider',
   },
   useVisible() {
+    const { allowDeleteEvent } = useContext(DeleteEventContext);
     const collection = useCollection_deprecated();
-    return collection.template === 'calendar';
+    return collection.template === 'calendar' && allowDeleteEvent;
   },
 };
 
@@ -52,10 +61,7 @@ export const CalendarFormActionInitializers = new SchemaInitializer({
               type: 'primary',
             },
           },
-          useVisible() {
-            const collection = useCollection_deprecated();
-            return (collection.template !== 'view' || collection?.writableView) && collection.template !== 'sql';
-          },
+          useVisible: () => useActionAvailable('update'),
         },
         {
           name: 'delete',
@@ -65,10 +71,7 @@ export const CalendarFormActionInitializers = new SchemaInitializer({
             'x-component': 'Action',
             'x-decorator': 'ACLActionProvider',
           },
-          useVisible: function useVisible() {
-            const collection = useCollection_deprecated();
-            return (collection.template !== 'view' || collection?.writableView) && collection.template !== 'sql';
-          },
+          useVisible: () => useActionAvailable('destroy'),
         },
         deleteEventActionInitializer,
       ],
@@ -157,19 +160,12 @@ export const CalendarFormActionInitializers = new SchemaInitializer({
               triggerWorkflows: [],
             },
           },
-          useVisible() {
-            const collection = useCollection_deprecated();
-            return (collection.template !== 'view' || collection?.writableView) && collection.template !== 'sql';
-          },
+          useVisible: () => useActionAvailable('update'),
         },
         {
           name: 'customRequest',
           title: generateNTemplate('Custom request'),
           Component: 'CustomRequestInitializer',
-          useVisible() {
-            const collection = useCollection_deprecated();
-            return (collection.template !== 'view' || collection?.writableView) && collection.template !== 'sql';
-          },
         },
       ],
     },

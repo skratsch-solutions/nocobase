@@ -7,7 +7,7 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
-import { request, Browser } from '@nocobase/test/e2e';
+import { Browser, request } from '@nocobase/test/e2e';
 
 const PORT = process.env.APP_PORT || 20000;
 const APP_BASE_URL = process.env.APP_BASE_URL || `http://localhost:${PORT}`;
@@ -1047,7 +1047,7 @@ export const userLogin = async (browser: Browser, approvalUserEmail: string, app
   await page.getByPlaceholder('Email').fill(approvalUserEmail);
   await page.getByPlaceholder('Password').fill(approvalUser);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('load');
   return context;
 };
 

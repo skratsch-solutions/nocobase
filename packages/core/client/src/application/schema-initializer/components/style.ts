@@ -35,22 +35,25 @@ export const useSchemaInitializerStyles = genStyleHook('nb-schema-initializer', 
           // height: token.controlHeight,
           lineHeight: `${token.controlHeight}px`,
           color: token.colorText,
-          cursor: 'pointer',
 
-          '&:hover': {
-            borderRadius: token.borderRadiusSM,
-            backgroundColor: token.colorBgTextHover,
+          [`&:not(${componentCls}-menu-item-disabled)`]: {
+            cursor: 'pointer',
+            [`&:hover`]: {
+              borderRadius: token.borderRadiusSM,
+              backgroundColor: token.colorBgTextHover,
+            },
+          },
+
+          [`&${componentCls}-menu-item-disabled`]: {
+            cursor: 'not-allowed',
+            color: token.colorTextDisabled,
           },
         },
       },
     },
-    [`${componentCls}-menu-sub`]: {
-      ul: {
-        maxHeight: '50vh !important',
-      },
-    },
     [`${componentCls}-item-content`]: {
-      marginLeft: token.marginXS,
+      // 相当于 Menu 的 iconMarginInlineEnd，参见：https://github.com/ant-design/ant-design/blob/6a62d9e7eaf3e683c673091e39fe65ba3204d94b/components/menu/style/index.ts#L942
+      marginLeft: token.controlHeightSM - token.fontSize,
     },
   };
 });

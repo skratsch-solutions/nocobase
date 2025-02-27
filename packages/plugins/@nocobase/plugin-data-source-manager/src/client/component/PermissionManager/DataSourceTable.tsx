@@ -7,17 +7,19 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
-import { Spin } from 'antd';
-import React, { createContext, useContext } from 'react';
 import {
-  useRequest,
   SchemaComponent,
   SchemaComponentContext,
   SettingCenterPermissionProvider,
+  usePlugin,
   useRecord,
+  useRequest,
 } from '@nocobase/client';
-import { dataSourceSchema } from './schemas/dataSourceTable';
+import { Spin } from 'antd';
+import React, { createContext, useContext } from 'react';
+import PluginDataSourceManagerClient from '../..';
 import { PermissionProvider } from './PermisionProvider';
+import { dataSourceSchema } from './schemas/dataSourceTable';
 
 const AvailableActionsContext = createContext([]);
 AvailableActionsContext.displayName = 'AvailableActionsContext';
@@ -39,14 +41,16 @@ export const useAvailableActions = () => {
   return useContext(AvailableActionsContext);
 };
 
+const schemaComponentContext = { designable: false };
 export const DataSourceTable = () => {
   const record = useRecord();
+  const plugin = usePlugin(PluginDataSourceManagerClient);
   return (
     <div>
-      <SchemaComponentContext.Provider value={{ designable: false }}>
+      <SchemaComponentContext.Provider value={schemaComponentContext}>
         <AvailableActionsProver>
           <SchemaComponent
-            schema={dataSourceSchema}
+            schema={dataSourceSchema(plugin.getExtendedTabs())}
             components={{ SettingCenterPermissionProvider, PermissionProvider }}
             scope={{ dataSourceKey: record.key }}
           />

@@ -9,18 +9,19 @@
 
 import { createForm, Form } from '@formily/core';
 import { Schema, useField } from '@formily/react';
-import { Spin } from 'antd';
+import { useUpdate } from 'ahooks';
 import React, { createContext, useContext, useEffect, useMemo, useRef } from 'react';
 import {
   CollectionRecord,
   useCollectionManager,
   useCollectionParentRecordData,
   useCollectionRecord,
+  useCollectionRecordData,
 } from '../data-source';
 import { withDynamicSchemaProps } from '../hoc/withDynamicSchemaProps';
 import { useTreeParentRecord } from '../modules/blocks/data-blocks/table/TreeRecordProvider';
 import { RecordProvider } from '../record-provider';
-import { useActionContext } from '../schema-component';
+import { useActionContext, useDesignable } from '../schema-component';
 import { BlockProvider, useBlockRequestContext } from './BlockProvider';
 import { TemplateBlockProvider } from './TemplateBlockProvider';
 import { FormActiveFieldsProvider } from './hooks/useFormActiveFields';
@@ -87,10 +88,6 @@ const InternalFormBlockProvider = (props) => {
     updateAssociationValues,
   ]);
 
-  if (service.loading && Object.keys(form?.initialValues)?.length === 0 && action) {
-    return <Spin />;
-  }
-
   return (
     <FormBlockContext.Provider value={formBlockValue}>
       <RecordProvider isNew={record?.isNew} parent={record?.parentRecord?.data} record={record?.data}>
@@ -122,10 +119,23 @@ export const useIsDetailBlock = () => {
 
 export const FormBlockProvider = withDynamicSchemaProps((props) => {
   const parentRecordData = useCollectionParentRecordData();
-  const { parentRecord } = props;
+  const { parentRecord, action } = props;
+  const record = useCollectionRecordData();
+  const { association } = props;
+  const cm = useCollectionManager();
+  const { __collection } = record || {};
+  const { designable } = useDesignable();
+  const collection = props.collection || cm.getCollection(association).name;
 
+  const refresh = useUpdate();
+
+  if (!designable && __collection && action) {
+    if (__collection !== collection) {
+      return null;
+    }
+  }
   return (
-    <TemplateBlockProvider>
+    <TemplateBlockProvider onTemplateLoaded={refresh}>
       <BlockProvider
         name={props.name || 'form'}
         {...props}
@@ -151,13 +161,12 @@ export const useFormBlockContext = () => {
 /**
  * @internal
  */
-export const useFormBlockProps = (shouldClearInitialValues = false) => {
+export const useFormBlockProps = () => {
   const ctx = useFormBlockContext();
   const treeParentRecord = useTreeParentRecord();
-  const { fieldSchema } = useActionContext();
-  const addChild = fieldSchema?.['x-component-props']?.addChild;
+
   useEffect(() => {
-    if (addChild) {
+    if (treeParentRecord) {
       ctx.form?.query('parent').take((field) => {
         field.disabled = true;
         field.value = treeParentRecord;
@@ -166,18 +175,14 @@ export const useFormBlockProps = (shouldClearInitialValues = false) => {
   });
 
   useEffect(() => {
-    if (!ctx?.service?.loading) {
-      const form: Form = ctx.form;
-      if (form) {
-        // form 字段中可能一开始就存在一些默认值（比如设置了字段默认值的模板区块）。在编辑表单中，
-        // 这些默认值是不需要的，需要清除掉，不然会导致一些问题。比如：https://github.com/nocobase/nocobase/issues/4868
-        if (shouldClearInitialValues) {
-          form.initialValues = {};
-        }
-        form.setInitialValues(ctx.service?.data?.data);
-      }
+    const form: Form = ctx.form;
+
+    if (!form || ctx.service?.loading) {
+      return;
     }
-  }, [ctx?.service?.loading]);
+
+    form.setInitialValues(ctx.service?.data?.data);
+  }, [ctx.form, ctx.service?.data?.data, ctx.service?.loading]);
   return {
     form: ctx.form,
   };
@@ -190,6 +195,9 @@ export const findFormBlock = (schema: Schema) => {
   while (schema) {
     if (schema['x-decorator'] === 'FormBlockProvider') {
       return schema;
+    }
+    if (schema['x-component'] === 'AssociationField.Selector') {
+      return null;
     }
     schema = schema.parent;
   }

@@ -15,14 +15,19 @@ import { useTranslation } from 'react-i18next';
 import { useDesignable } from '..';
 import { useToken } from '../../style';
 
+const designableStyle = {
+  backgroundColor: 'var(--colorSettings) !important',
+};
+
+const unDesignableStyle = {
+  backgroundColor: 'transparent',
+};
+
 export const DesignableSwitch = () => {
   const { designable, setDesignable } = useDesignable();
   const { t } = useTranslation();
   const { token } = useToken();
-  const style = {};
-  if (designable) {
-    style['backgroundColor'] = 'var(--colorSettings)';
-  }
+  const style = designable ? designableStyle : unDesignableStyle;
 
   // 快捷键切换编辑状态
   useHotkeys('Ctrl+Shift+U', () => setDesignable(!designable), [designable]);

@@ -9,14 +9,15 @@
 
 import { ButtonProps } from 'antd';
 import React, { FC, useMemo } from 'react';
+import { useOpenModeContext } from '../../../modules/popup/OpenModeProvider';
 import { useApp } from '../../hooks';
 import { SchemaInitializerItems } from '../components';
 import { SchemaInitializerButton } from '../components/SchemaInitializerButton';
-import { withInitializer } from '../withInitializer';
-import { SchemaInitializerOptions } from '../types';
 import { SchemaInitializer } from '../SchemaInitializer';
+import { SchemaInitializerOptions } from '../types';
+import { withInitializer } from '../withInitializer';
 
-const InitializerComponent: FC<SchemaInitializerOptions<any, any>> = React.memo((options) => {
+const InitializerComponent: FC<SchemaInitializerOptions<any, any>> = (options) => {
   const Component: any = options.Component || SchemaInitializerButton;
 
   const ItemsComponent: any = options.ItemsComponent || SchemaInitializerItems;
@@ -30,7 +31,8 @@ const InitializerComponent: FC<SchemaInitializerOptions<any, any>> = React.memo(
   const C = useMemo(() => withInitializer(Component), [Component]);
 
   return React.createElement(C, options, React.createElement(ItemsComponent, itemsComponentProps));
-});
+};
+
 InitializerComponent.displayName = 'InitializerComponent';
 
 export function useSchemaInitializerRender<P1 = ButtonProps, P2 = {}>(
@@ -38,6 +40,18 @@ export function useSchemaInitializerRender<P1 = ButtonProps, P2 = {}>(
   options?: Omit<SchemaInitializerOptions<P1, P2>, 'name'>,
 ) {
   const app = useApp();
+  const { isMobile } = useOpenModeContext() || {};
+
+  // compatible with mobile
+  // TODO: delete this code
+  if (
+    name === 'popup:common:addBlock' &&
+    app.schemaInitializerManager.has('mobile:popup:common:addBlock') &&
+    isMobile
+  ) {
+    name = 'mobile:popup:common:addBlock';
+  }
+
   const initializer = useMemo(
     () => (typeof name === 'object' ? name : app.schemaInitializerManager.get<P1, P2>(name)),
     [app.schemaInitializerManager, name],

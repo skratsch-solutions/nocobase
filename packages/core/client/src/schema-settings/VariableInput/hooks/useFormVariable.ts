@@ -12,7 +12,7 @@ import { Schema } from '@formily/json-schema';
 import { useTranslation } from 'react-i18next';
 import { useFormBlockContext } from '../../../block-provider/FormBlockProvider';
 import { CollectionFieldOptions_deprecated } from '../../../collection-manager';
-import { useDataBlockRequest } from '../../../data-source';
+import { useDataBlockRequestData, useDataSource } from '../../../data-source';
 import { useFlag } from '../../../flag-provider/hooks/useFlag';
 import { useBaseVariable } from './useBaseVariable';
 
@@ -63,11 +63,30 @@ export const useFormVariable = ({ collectionName, collectionField, schema, noDis
 };
 
 const useCurrentFormData = () => {
-  const ctx: any = useDataBlockRequest();
-  if (ctx?.data?.data?.length > 1) {
+  const data = useDataBlockRequestData();
+  if (data?.data?.length > 1) {
     return;
   }
-  return ctx?.data?.data?.[0] || ctx?.data?.data;
+  return data?.data?.[0] || data?.data;
+};
+
+/**
+ * 变量：`当前表单` 相关的 hook
+ * @param param0
+ * @returns
+ */
+export const useCurrentFormContext = ({ form: _form }: Pick<Props, 'form'> = {}) => {
+  const { form } = useFormBlockContext();
+  const { isVariableParsedInOtherContext } = useFlag();
+
+  const formInstance = _form || form;
+
+  return {
+    /** 变量值 */
+    currentFormCtx: formInstance?.values,
+    /** 用来判断是否可以显示`当前表单`变量 */
+    shouldDisplayCurrentForm: formInstance && !formInstance.readPretty && !isVariableParsedInOtherContext,
+  };
 };
 
 /**
@@ -82,11 +101,10 @@ export const useCurrentFormVariable = ({
   targetFieldSchema,
   form: _form,
 }: Props = {}) => {
-  // const { getActiveFieldsName } = useFormActiveFields() || {};
+  const { currentFormCtx, shouldDisplayCurrentForm } = useCurrentFormContext({ form: _form });
   const { t } = useTranslation();
-  const { form, collectionName } = useFormBlockContext();
-  const formData = useCurrentFormData();
-  const { isVariableParsedInOtherContext } = useFlag();
+  const { collectionName } = useFormBlockContext();
+  const dataSource = useDataSource();
   const currentFormSettings = useBaseVariable({
     collectionField,
     uiSchema: schema,
@@ -96,6 +114,7 @@ export const useCurrentFormVariable = ({
     title: t('Current form'),
     collectionName: collectionName,
     noDisabled,
+    dataSource: dataSource?.key,
     returnFields: (fields, option) => {
       // fix https://nocobase.height.app/T-2277
       return fields;
@@ -109,16 +128,12 @@ export const useCurrentFormVariable = ({
     },
   });
 
-  const formInstance = _form || form;
   return {
     /** 变量配置 */
     currentFormSettings,
     /** 变量值 */
-    currentFormCtx:
-      formInstance?.readPretty === false && formInstance?.values && Object.keys(formInstance?.values)?.length
-        ? formInstance?.values
-        : formData || formInstance?.values,
+    currentFormCtx,
     /** 用来判断是否可以显示`当前表单`变量 */
-    shouldDisplayCurrentForm: formInstance && !formInstance.readPretty && !isVariableParsedInOtherContext,
+    shouldDisplayCurrentForm,
   };
 };

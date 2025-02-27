@@ -12,14 +12,10 @@ import { flatten, getValuesByPath } from '@nocobase/utils/client';
 import _ from 'lodash';
 import { useCallback, useEffect, useState } from 'react';
 import { FilterTarget, findFilterTargets } from '../block-provider/hooks';
-import {
-  CollectionFieldOptions_deprecated,
-  FieldOptions,
-  useCollectionManager_deprecated,
-  useCollection_deprecated,
-} from '../collection-manager';
+import { CollectionFieldOptions_deprecated, FieldOptions } from '../collection-manager';
 import { Collection } from '../data-source/collection/Collection';
 import { useCollection } from '../data-source/collection/CollectionProvider';
+import { useAllCollectionsInheritChainGetter } from '../data-source/data-source/DataSourceManagerProvider';
 import { removeNullCondition } from '../schema-component';
 import { DataBlock, useFilterBlock } from './FilterProvider';
 
@@ -68,7 +64,7 @@ export const useSupportedBlocks = (filterBlockType: FilterBlockType) => {
   const { getDataBlocks } = useFilterBlock();
   const fieldSchema = useFieldSchema();
   const collection = useCollection();
-  const { getAllCollectionsInheritChain } = useCollectionManager_deprecated();
+  const { getAllCollectionsInheritChain } = useAllCollectionsInheritChainGetter();
 
   // Form 和 Collapse 仅支持同表的数据区块
   if (filterBlockType === FilterBlockType.FORM || filterBlockType === FilterBlockType.COLLAPSE) {
@@ -139,12 +135,19 @@ export const transformToFilter = (
         let value = _.get(values, key);
         const collectionField = getCollectionJoinField(`${collectionName}.${key}`);
 
-        if (collectionField?.target) {
+        if (
+          collectionField?.target &&
+          ['hasOne', 'hasMany', 'belongsTo', 'belongsToMany', 'belongsToArray'].includes(collectionField.type)
+        ) {
           value = getValuesByPath(value, collectionField.targetKey || 'id');
           key = `${key}.${collectionField.targetKey || 'id'}`;
+
+          if (collectionField?.interface === 'chinaRegion') {
+            value = _.last(value);
+          }
         }
 
-        if (!value) {
+        if (!value && value !== 0 && value !== false) {
           return null;
         }
 
@@ -161,13 +164,11 @@ export const transformToFilter = (
 };
 
 export const useAssociatedFields = () => {
-  const { fields } = useCollection_deprecated();
-
-  return fields.filter((field) => isAssocField(field)) || [];
+  return useCollection()?.fields.filter((field) => isAssocField(field)) || [];
 };
 
 export const isAssocField = (field?: FieldOptions) => {
-  return ['o2o', 'oho', 'obo', 'm2o', 'createdBy', 'updatedBy', 'o2m', 'm2m', 'linkTo', 'chinaRegion'].includes(
+  return ['o2o', 'oho', 'obo', 'm2o', 'createdBy', 'updatedBy', 'o2m', 'm2m', 'linkTo', 'chinaRegion', 'mbm'].includes(
     field?.interface,
   );
 };
@@ -192,16 +193,19 @@ export const useFilterAPI = () => {
 
   const doFilter = useCallback(
     (
-      value,
-      field: string | ((target: FilterTarget['targets'][0]) => string) = 'id',
+      value: any | ((target: FilterTarget['targets'][0], block: DataBlock) => any),
+      field: string | ((target: FilterTarget['targets'][0], block: DataBlock) => string) = 'id',
       operator: string | ((target: FilterTarget['targets'][0]) => string) = '$eq',
     ) => {
       dataBlocks.forEach((block) => {
         const target = targets.find((target) => target.uid === block.uid);
         if (!target) return;
 
+        if (_.isFunction(value)) {
+          value = value(target, block);
+        }
         if (_.isFunction(field)) {
-          field = field(target);
+          field = field(target, block);
         }
         if (_.isFunction(operator)) {
           operator = operator(target);
